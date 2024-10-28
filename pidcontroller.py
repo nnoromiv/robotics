@@ -31,6 +31,7 @@ class PIDController():
         derivative = (error - self.previous_error) / dt
         D = self.Kd * derivative
 
+        # PID calculation
         PID = P + I + D
         self.previous_error = error
         return PID
@@ -70,10 +71,12 @@ class WallFollowingBot(Node):
             # Timer to run wall following logic
             # self.timer_ = self.create_timer(self.dt, self.update)
 
+        # Find the nearest distance between a range
         def find_nearest(self, list):
             f_list = filter(lambda item: item > 0.0, list)  # exclude zeros
             return min(min(f_list, default=10), 10)
         
+        # Function to update distance between wall
         def distance_callback(self, msg):
 
             right_side_range = self.find_nearest(msg.ranges[265:275]),
@@ -81,6 +84,7 @@ class WallFollowingBot(Node):
             self.current_distance : int = min(right_side_range)
             self.update_control()
 
+        # Ziegler-Niclos Update function for the PID
         def update_control(self):
             if self.current_distance is None:
                 return # Wait until we get a valid distance
@@ -128,6 +132,7 @@ class WallFollowingBot(Node):
             # Publish Velocity
             self.pub_.publish(twist)
 
+        # Shutdown the program on the bot
         def on_shutdown(self):
             self.get_logger().info('Shutting down wall follower...')
             rclpy.shutdown()
