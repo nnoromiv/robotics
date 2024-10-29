@@ -4,7 +4,6 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from tf2_ros import TransformRegistration
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 
@@ -31,7 +30,7 @@ class LaserNavigator(Node):
         
         # Create subscription to laser topic
         self.sub = self.create_subscription(LaserScan, '/scan', self.clbk_laser, qos)
-        
+
         # Create a timer for periodic publishing
         timer_period = 0.2  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
@@ -53,6 +52,13 @@ class LaserNavigator(Node):
         # Update twist message with movement decision
         self.twist_msg = self.movement()
 
+    def clbk_odom(self, msg):
+        self.current_position = (msg.pose.pose.position.x, msg.pose.pose.position.y)
+
+        # If initial position is not set
+        if self.initial_position is None:
+            self.initial_position = self.current_position
+
     def find_nearest(self, lst):
         # Exclude zero distances and find minimum
         filtered_list = filter(lambda item: item > 0.0, lst)
@@ -63,19 +69,27 @@ class LaserNavigator(Node):
         msg = Twist()
         
         # Check front regions for obstacles and decide on motion
-        print("Min distance in front region:", self.regions['front1'], self.regions['front2'])
-        if self.regions['front1'] < 0.25 or self.regions['front2'] < 0.25:
-            msg.linear.x = 0.0
-            msg.angular.z = 1.0
-        elif self.regions['fright'] < 0.1:
-            msg.linear.x = 0.05
-            msg.angular.z = 0.1
-        elif self.regions['left'] < 0.25:
-            msg.linear.x = 0.5
-            msg.angular.z = -0.1
-        else:
-            msg.linear.x = 0.1
+        if self.regions['front1'] > 0.3 and self.regions['front2'] > 0.3:
+            print("Heading Straight", self.regions)
+            msg.linear.x = 0.2
             msg.angular.z = 0.0
+        elif self.regions['left'] < 0.25:
+            msg.linear.x = 0.0
+            msg.angular.z = 0.2
+        else :
+            msg.linear.x = 0.2
+            msg.angular.z = 0.0
+
+
+        # elif self.regions['left'] < 0.1:
+        #     print("Too left moving right", self.regions['left'], self.regions['right'])
+        #     msg.linear.x = 0.0
+        #     msg.angular.z = 0.1
+        # else:
+        #     print("Obstacle detected", self.regions['front1'], self.regions['front2'], self.regions['right'])
+        #     msg.linear.x = 0.0
+        #     msg.angular.z = 0.3
+
         return msg
 
     def stop(self):
