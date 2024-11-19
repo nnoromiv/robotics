@@ -21,6 +21,10 @@ Run the below command to start the bot, a succesfull start would show RUN!
     ros2 launch turtlebot3_bringup robot.launch.py
 ```
 
+```bash
+    ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
+```
+
 ## Running your code on the bot 
 
 - To do this open a new terminal and and repeat the connection process via ssh
