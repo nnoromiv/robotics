@@ -6,7 +6,6 @@ from geometry_msgs.msg import Twist
 
 MAX_RANGE = 0.15
 
-
 class ObstacleAvoider(Node):
     def __init__(self):
         super().__init__('obstacle_avoider')

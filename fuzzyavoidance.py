@@ -47,8 +47,8 @@ rule_base = [
 def fuzzify(sensor_value, funcs):
     return {label: func(sensor_value) for label, func in funcs.items()}
 
-# Defuzzification using the centroid method
-def centroid_defuzzification(firing_strengths, universe, func):
+# Fuzzification using the centroid method
+def centroid_fuzzification(firing_strengths, universe, func):
     numerator = sum(strength * x * func(x) for x, strength in zip(universe, firing_strengths))
     denominator = sum(strength * func(x) for x, strength in zip(universe, firing_strengths))
     return numerator / denominator if denominator != 0 else 0
