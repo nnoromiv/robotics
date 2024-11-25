@@ -1,4 +1,9 @@
 import numpy as np
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 # Membership function parameters for RBS and RFS
 def near(x):
@@ -68,7 +73,7 @@ def fuzzy_controller(RBS_value, RFS_value):
     # Apply rules and calculate firing strengths
     speed_firing_strengths = []
     direction_firing_strengths = []
-    speed_universe = np.linspace(0, 100, 100)  # Speed universe
+    speed_universe = np.linspace(10, 100, 100)  # Speed universe
     direction_universe = np.linspace(-30, 30, 100)  # Direction universe
 
     for rule in rule_base:
@@ -83,15 +88,68 @@ def fuzzy_controller(RBS_value, RFS_value):
     direction_values = [centroid_defuzzification([fs for fs, _ in direction_firing_strengths], direction_universe, func)
                         for _, func in direction_firing_strengths]
 
-    speed_output = np.mean(speed_values)
-    direction_output = np.mean(direction_values)
+    # Ensure speed is within a reasonable range
+    speed_output = np.clip(np.mean(speed_values), 0.0, 1.0)  # Clip speed to [0, 1]
+    direction_output = np.clip(np.mean(direction_values), -1.0, 1.0)  # Clip direction to [-1, 1]
+
+
+    # Print outputs for debugging
+    print(f"Speed Output: {speed_output}, Direction Output: {direction_output}")
 
     return speed_output, direction_output
 
-# Example usage
-RBS_value = 25  # Example RBS sensor input
-RFS_value = 40  # Example RFS sensor input
+# ROS2 Node for handling robot movement
+class FuzzyControlNode(Node):
+    def __init__(self):
+        super().__init__('fuzzy_control_node')
+        
+        # Create publisher for /cmd_vel
+        self.publisher = self.create_publisher(Twist, '/cmd_vel', QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
+        
+        # Create a subscription to the /scan topic
+        self.create_subscription(LaserScan, '/scan', self.scan_callback, QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
 
-speed, direction = fuzzy_controller(RBS_value, RFS_value)
-print(f"Computed Speed: {speed}")
-print(f"Computed Direction: {direction}")
+    def scan_callback(self, msg):
+        # Process the LaserScan data to compute fuzzy control values
+        valid_ranges = [r for r in msg.ranges if not np.isnan(r) and r != float('inf')]
+
+        # Front distance: Use a wider slice for better coverage of the front (0° to 30° and 330° to 360°)
+        front_distance = min(min(valid_ranges[0:30]), min(valid_ranges[-30:]))
+
+        # Right distance: Use a wider slice for the right side (250° to 290°)
+        right_distance = min(valid_ranges[250:290])
+        
+        # For simplicity, we use the front distance as the RBS value and right distance as the RFS value
+        RBS_value = front_distance
+        RFS_value = right_distance
+
+        # self.get_logger().info(f"RBS: {front_distance}, RFS: {right_distance}")
+        
+        # Get speed and direction from the fuzzy controller
+        speed, direction = fuzzy_controller(RBS_value, RFS_value)
+
+        if speed < 0.1:
+            direction = 0.0
+
+        # Send the computed Twist message
+        twist = Twist()
+        twist.linear.x = speed
+        twist.angular.z = direction
+
+        self.get_logger().info(f"Speed: {speed}, Direction: {direction}")
+        self.publisher.publish(twist)
+
+def main(args=None):
+    rclpy.init(args=args)    
+    controller = FuzzyControlNode()
+
+    try:
+        rclpy.spin(controller)
+    except KeyboardInterrupt:
+        controller.destroy_node()
+    finally:
+        controller.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
