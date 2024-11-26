@@ -29,12 +29,35 @@ class WallFollowingBot(Node):
         super().__init__('wall_following_bot')
 
         # PID tuned with Ziegler-Nichols
-        Kp = 0.4
-        Kd = 0.08
-        Ki = 0.02
+        
+        # Use Ku and Pu values to compute PID parameters
+        Ku = 0.4  # Ultimate Gain
+        Pu = 1.0  # Oscillation Period in seconds
+        
+
+        # Increase the proportional gain (Kp) using Ku above until 
+        # the system starts to oscillate continuously, i.e., when 
+        # the system reaches a stable oscillation, where the output 
+        # does not grow unbounded but instead oscillates with a 
+        # constant amplitude.
+        Kp = 0.6 * Ku
+        # Dampen the rate of error change, preventing overshooting 
+        # or oscillation in the robot's behavior. Pu/8
+        Kd = 0.075 * Kp * Pu
+        # Handles accumulated error over time Pu/2
+        Ki = 1.2 * Kp / Pu
+        
+        # Kp = 0.4
+        # Kd = 0
+        # Ki = 0
+        
         self.dt = 0.05
 
-        self.pid = PIDController(Kp=Kp, Ki=Ki, Kd=Kd)
+        self.pid = PIDController(
+            Kp=Kp, 
+            Ki=Ki, 
+            Kd=Kd
+        )
         self.desired_distance = 0.25 # Target distance from wall
 
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
@@ -42,11 +65,10 @@ class WallFollowingBot(Node):
         
         self.current_distance = None
         self.front_distance = None
-        self.previous_time = self.get_clock().now()
+        self.left_distance = None
+        self.right_distance = None
 
-        self.last_error_sign = None
-        self.last_sign_change_time = None
-        self.oscillation_periods = []
+        self.previous_time = self.get_clock().now()
 
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         
@@ -54,6 +76,7 @@ class WallFollowingBot(Node):
         self.timer_ = self.create_timer(self.dt, self.update_control)
 
     def find_nearest(self, l):
+        """Return the nearest non-zero distance from a list"""
         f_list = list(filter(lambda item: item > 0.0, l))
         if f_list:
             return min(f_list)
@@ -62,16 +85,22 @@ class WallFollowingBot(Node):
 
     def distance_callback(self, msg):
         # Get right-side distance from the scan data
-        right_side_range = self.find_nearest(msg.ranges[265:275])
-        self.current_distance = right_side_range
+        # right_side_range = self.find_nearest(msg.ranges[265:275])
+        self.right_distance = self.find_nearest(msg.ranges[265:275])
+        self.left_distance = self.find_nearest(msg.ranges[85:95])
 
-        front_ranges = self.find_nearest(msg.ranges[0:5]) + self.find_nearest(msg.ranges[355:360])
+        front_ranges = min(self.find_nearest(msg.ranges[0:5]), self.find_nearest(msg.ranges[355:360]))
         self.front_distance = front_ranges
-        # No need to call update_control here, it's already handled by the timer
+        self.current_distance = self.right_distance
 
     def update_control(self):
         if self.current_distance is None or self.current_distance == float('inf'):
+            self.get_logger().warn('Invalid right-side distance')
             return  # Skip if no valid distance data
+        
+        if self.left_distance == float('inf') or self.right_distance == float('inf'):
+            self.get_logger().warn('Invalid left or right-side distance')
+            return  # Skip if any of the side distances are invalid
 
         # Calculate the time difference (dt)
         current_time = self.get_clock().now()
@@ -82,13 +111,12 @@ class WallFollowingBot(Node):
         error = self.desired_distance - self.current_distance
         self.get_logger().info(f"Current Distance: {self.current_distance}, Error: {error}")
 
-        # Detect obstacles in front (in the central range of the laser scan)
-        obstacle_threshold = 0.5  # Distance threshold to detect obstacles (in meters)
-
-        # If no obstacle is in front, calculate PID correction for steering
+        # Calculate PID correction for steering
         correction = self.pid.update(error=error, dt=dt)
+        self.get_logger().info(f"Correction: {correction}")
+        
 
-        if self.front_distance < obstacle_threshold:
+        if self.front_distance < self.desired_distance:
             # If there's an obstacle in front, the bot needs to turn
             self.get_logger().info("Obstacle detected in front! Turning...")
 
@@ -98,15 +126,27 @@ class WallFollowingBot(Node):
             twist.angular.z = correction  # Turn right (you can adjust the turning speed or direction)
             self.pub_.publish(twist)
             return
+        
+        if self.left_distance < self.desired_distance:
+            self.get_logger().info("Obstacle detected on the left! Steering away...")
+            twist = Twist()
+            twist.linear.x = 0.05
+            twist.angular.z = 0.5  # Turn right if obstacle detected on left
+            self.pub_.publish(twist)
+            return
 
-
-        # Log the correction value
-        self.get_logger().info(f"Correction: {correction}")
+        if self.right_distance < self.desired_distance:
+            self.get_logger().info("Obstacle detected on the right! Steering away...")
+            twist = Twist()
+            twist.linear.x = 0.05
+            twist.angular.z = -0.5  # Turn left if obstacle detected on right
+            self.pub_.publish(twist)
+            return
 
         # Create Twist message for robot movement
+        # If no obstacle is in front, left, or right, move forward
         twist = Twist()
         twist.linear.x = 0.1  # Constant forward speed
-        # twist.angular.z = correction  # Steering adjustment
 
         # Publish the velocity command to the robot
         self.pub_.publish(twist)
