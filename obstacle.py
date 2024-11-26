@@ -2,6 +2,8 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import LaserScan
 
 
 MAX_RANGE = 0.15
@@ -81,7 +83,7 @@ class ObstacleAvoider(Node):
 def main():
     # Initialize rclpy and create the node
     rclpy.init()
-    laser_navigator = LaserNavigator()
+    laser_navigator = ObstacleAvoider()
 
     # Run and handle keyboard interrupts
     try:

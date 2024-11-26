@@ -1,15 +1,15 @@
 class FuzzyImplementation:
     def __init__(self) -> None:
         self.rule_base = [
-        ("Near", "Near", "Slow", "Medium"),
-        ("Near", "Medium", "Slow", "Medium"),
-        ("Near", "Far", "Slow", "Fast"),
-        ("Medium", "Near", "Medium", "Slow"),
-        ("Medium", "Medium", "Medium", "Medium"),
-        ("Medium", "Far", "Slow", "Medium"),
-        ("Far", "Near", "Medium", "Slow"),
-        ("Far", "Medium", "Medium", "Slow"),
-        ("Far", "Far", "Fast", "Slow"),
+        ("Near", "Near", "Slow", "Right"),
+        ("Near", "Medium", "Slow", "Right"),
+        ("Near", "Far", "Slow", "Forward"),
+        ("Medium", "Near", "Medium", "Left"),
+        ("Medium", "Medium", "Medium", "Forward"),
+        ("Medium", "Far", "Slow", "Forward"),
+        ("Far", "Near", "Medium", "Left"),
+        ("Far", "Medium", "Medium", "Left"),
+        ("Far", "Far", "Fast", "Forward"),
     ]
     
     def remove_zero_memberships(self, membership):
@@ -153,6 +153,9 @@ class FuzzyImplementation:
             "Slow": (10, 30),
             "Medium": (30, 50),
             "Fast": (50, 70),
+            "Left": (10, 30),
+            "Forward": (30, 50),
+            "Right": (50, 70),
         }
         
         if key in ranges:
@@ -160,7 +163,7 @@ class FuzzyImplementation:
             return (start + end) / 2  # Calculate the midpoint
         else:
             print(key)
-            raise ValueError("Invalid key. Choose from 'Slow', 'Medium', 'Fast'.")
+            raise ValueError("Invalid key.")
 
     def defuzzify(self, memberships, firing_strength_sum):
             """Compute the weighted sum for a set of fuzzy memberships."""

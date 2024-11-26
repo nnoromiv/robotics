@@ -17,6 +17,8 @@
 
 Run the below command to start the bot, a succesfull start would show RUN!
 
+export TURTLEBOT3_MODEL=burger
+
 ```bash
     ros2 launch turtlebot3_bringup robot.launch.py
 ```
