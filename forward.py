@@ -45,7 +45,8 @@ class LaserNavigator(Node):
             'right': self.find_nearest(msg.ranges[265:275]),
             'fright': self.find_nearest(msg.ranges[310:320]),
             'fleft': self.find_nearest(msg.ranges[40:50]),
-            'left': self.find_nearest(msg.ranges[85:95])
+            'left': self.find_nearest(msg.ranges[85:95]),
+            'rback': self.find_nearest(msg.ranges[210:220])
         }
         # Update twist message with movement decision
         self.twist_msg = self.movement()

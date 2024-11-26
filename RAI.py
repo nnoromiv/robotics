@@ -1,3 +1,8 @@
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 class FuzzyImplementation:
     def __init__(self) -> None:
         self.rule_base = [
@@ -176,25 +181,93 @@ class FuzzyImplementation:
 
             return weighted_sum / firing_strength_sum
         
-def main():
-    fuzzyImplementation = FuzzyImplementation()
+# def main():
+#     fuzzyImplementation = FuzzyImplementation()
     
-    # Example usage
-    right = 15
-    back = 52
-    right_membership_values = fuzzyImplementation.right_forward_sensor_membership(right)
-    back_membership_values = fuzzyImplementation.right_backward_sensor_membership(back)
-    # print(f"Membership values at right {right}: {right_membership_values}")
-    # print(f"Membership values at back {back}: {back_membership_values}")
+#     # Example usage
+#     right = 15
+#     back = 52
+#     right_membership_values = fuzzyImplementation.right_forward_sensor_membership(right)
+#     back_membership_values = fuzzyImplementation.right_backward_sensor_membership(back)
+#     # print(f"Membership values at right {right}: {right_membership_values}")
+#     # print(f"Membership values at back {back}: {back_membership_values}")
 
-    output, firing_strength_sum = fuzzyImplementation.make_inference(right_membership_values, back_membership_values)
-    print(output)
+#     output, firing_strength_sum = fuzzyImplementation.make_inference(right_membership_values, back_membership_values)
+#     print(output)
 
-    # Compute for Speed and Direction
-    weighted_speed = fuzzyImplementation.defuzzify(output.get("Speed", {}), firing_strength_sum)
-    weighted_direction = fuzzyImplementation.defuzzify(output.get("Direction", {}), firing_strength_sum)
+#     # Compute for Speed and Direction
+#     weighted_speed = fuzzyImplementation.defuzzify(output.get("Speed", {}), firing_strength_sum)
+#     weighted_direction = fuzzyImplementation.defuzzify(output.get("Direction", {}), firing_strength_sum)
 
-    print({"Speed": weighted_speed, "Direction": weighted_direction})
-    
+#     print({"Speed": weighted_speed, "Direction": weighted_direction})
+
+class WallFollowingBot(Node):
+    def __init__(self):
+        super().__init__('wall_following_bot')
+
+        self.fuzzy = FuzzyImplementation()  # Instantiate fuzzy logic class
+
+        qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        self.sub_ = self.create_subscription(LaserScan, '/scan', self.distance_callback, qos)
+
+        self.right_forward_distance = None
+        self.right_backward_distance = None
+
+        self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.timer_ = self.create_timer(0.1, self.update_control)
+
+    def find_nearest(self, l):
+        """Return the nearest non-zero distance from a list"""
+        f_list = list(filter(lambda item: item > 0.0, l))
+        if f_list:
+            return min(f_list)
+        else:
+            return float('inf')
+
+    def distance_callback(self, msg):
+        """Callback to process LaserScan messages and extract sensor distances."""
+        self.right_forward_distance = self.find_nearest(msg.ranges[310:320])
+        self.right_backward_distance = self.find_nearest(msg.ranges[210:220])
+
+    def update_control(self):
+        if self.right_forward_distance is None or self.right_backward_distance is None:
+            self.get_logger().warn("Sensor data not available yet.")
+            return
+
+        # Fuzzy logic inference
+        right_membership = self.fuzzy.right_forward_sensor_membership(self.right_forward_distance)
+        back_membership = self.fuzzy.right_backward_sensor_membership(self.right_backward_distance)
+        output, firing_strength_sum = self.fuzzy.make_inference(right_membership, back_membership)
+
+        if firing_strength_sum == 0:
+            self.get_logger().warn("No firing strength from fuzzy rules.")
+            return
+
+        # Defuzzify to get crisp values
+        speed = self.fuzzy.defuzzify(output.get("Speed", {}), firing_strength_sum)
+        direction = self.fuzzy.defuzzify(output.get("Direction", {}), firing_strength_sum)
+
+        # Log the computed values
+        self.get_logger().info(f"Speed: {speed}, Direction: {direction}")
+
+        # Generate and publish Twist message
+        twist = Twist()
+        twist.linear.x = speed / 100.0  # Scale speed to appropriate range
+        twist.angular.z = (direction - 50) / 50.0  # Scale direction (-1 to 1 for ROS)
+        self.pub_.publish(twist)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    controller = WallFollowingBot()
+
+    try:
+        rclpy.spin(controller)
+    except KeyboardInterrupt:
+        controller.get_logger().info("Shutting down...")
+    finally:
+        controller.destroy_node()
+        rclpy.shutdown()
+        
 if __name__ == "__main__":
     main()
