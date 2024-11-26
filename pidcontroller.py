@@ -31,34 +31,34 @@ class WallFollowingBot(Node):
         # PID tuned with Ziegler-Nichols
         
         # Use Ku and Pu values to compute PID parameters
-        Ku = 0.008  # Ultimate Gain
-        Pu = 4.0  # Oscillation Period in seconds
+        # Ku = 0.01  # Ultimate Gain
+        # Pu = 2.0  # Oscillation Period in seconds
         
 
-        # Increase the proportional gain (Kp) using Ku above until 
-        # the system starts to oscillate continuously, i.e., when 
-        # the system reaches a stable oscillation, where the output 
-        # does not grow unbounded but instead oscillates with a 
-        # constant amplitude.
-        Kp = 0.6 * Ku
-        # Dampen the rate of error change, preventing overshooting 
-        # or oscillation in the robot's behavior. Pu/8
-        Kd = 0.08 * Kp * Pu
-        # Handles accumulated error over time Pu/2
-        Ki = 1.4 * Kp / Pu
+        # # Increase the proportional gain (Kp) using Ku above until 
+        # # the system starts to oscillate continuously, i.e., when 
+        # # the system reaches a stable oscillation, where the output 
+        # # does not grow unbounded but instead oscillates with a 
+        # # constant amplitude.
+        # Kp = 0.6 * Ku
+        # # Dampen the rate of error change, preventing overshooting 
+        # # or oscillation in the robot's behavior. Pu/8
+        # Kd = 0.08 * Kp * Pu
+        # # Handles accumulated error over time Pu/2
+        # Ki = 1.4 * Kp / Pu
         
-        # Kp = 0.4
-        # Kd = 0
-        # Ki = 0
+        Kp = 0.3
+        Kd = 0.0
+        Ki = 0.0
         
-        self.dt = 0.4
+        self.dt = 0.5
 
         self.pid = PIDController(
             Kp=Kp, 
             Ki=Ki, 
             Kd=Kd
         )
-        self.desired_distance = 0.4 # Target distance from wall
+        self.desired_distance = 0.5 # Target distance from wall
 
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.sub_ = self.create_subscription(LaserScan, '/scan', self.distance_callback, qos)
@@ -85,11 +85,10 @@ class WallFollowingBot(Node):
 
     def distance_callback(self, msg):
         # Get right-side distance from the scan data
-        right_side_range = self.find_nearest(msg.ranges[265:275])
-
-
         front_ranges = min(self.find_nearest(msg.ranges[0:5]), self.find_nearest(msg.ranges[355:360]))
         self.front_distance = front_ranges
+        
+        right_side_range = self.find_nearest(msg.ranges[265:320])
         self.current_distance = right_side_range
 
     def update_control(self):
@@ -103,7 +102,6 @@ class WallFollowingBot(Node):
 
         # Calculate the time difference (dt)
         current_time = self.get_clock().now()
-        dt = (current_time - self.previous_time).nanoseconds / 1e9  # Time in seconds
         self.previous_time = current_time
 
         # Calculate error in distance from the desired distance
@@ -111,43 +109,20 @@ class WallFollowingBot(Node):
         self.get_logger().info(f"Current Distance: {self.current_distance}, Error: {error}")
 
         # Calculate PID correction for steering
-        correction = self.pid.update(error=error, dt=dt)
+        correction = self.pid.update(error=error, dt=0.7)
         self.get_logger().info(f"Correction: {correction}")
-        
 
-        # if self.front_distance < self.desired_distance:
-        #     # If there's an obstacle in front, the bot needs to turn
-        #     self.get_logger().info("Obstacle detected in front! Turning...")
+        if self.current_distance < self.desired_distance:
+            self.get_logger().info("Steering away...")
+            twist = Twist()
+            twist.linear.x = 0.05
+            twist.angular.z = correction
+            self.pub_.publish(twist)
+            return
 
-        #     # Turn right if obstacle is detected in front
-        #     twist = Twist()
-        #     twist.linear.x = 0.05  # Move slowly forward
-        #     twist.angular.z = correction  # Turn right (you can adjust the turning speed or direction)
-        #     self.pub_.publish(twist)
-        #     return
-        
-        # if self.left_distance < self.desired_distance:
-        #     self.get_logger().info("Obstacle detected on the left! Steering away...")
-        #     twist = Twist()
-        #     twist.linear.x = 0.05
-        #     twist.angular.z = 0.5  # Turn right if obstacle detected on left
-        #     self.pub_.publish(twist)
-        #     return
-
-        # if self.right_distance < self.desired_distance:
-        #     self.get_logger().info("Obstacle detected on the right! Steering away...")
-        #     twist = Twist()
-        #     twist.linear.x = 0.05
-        #     twist.angular.z = -0.5  # Turn left if obstacle detected on right
-        #     self.pub_.publish(twist)
-        #     return
-
-        # Create Twist message for robot movement
-        # If no obstacle is in front, left, or right, move forward
-        
         twist = Twist()
         twist.linear.x = 0.1  # Constant forward speed
-        twist.angular.z = correction  # Turn right (you can adjust the turning speed or direction)
+        twist.angular.z = correction # Turn right (you can adjust the turning speed or direction)
 
         # Publish the velocity command to the robot
         self.pub_.publish(twist)

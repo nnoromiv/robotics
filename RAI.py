@@ -180,26 +180,6 @@ class FuzzyImplementation:
                     weighted_sum += middle * item
 
             return weighted_sum / firing_strength_sum
-        
-# def main():
-#     fuzzyImplementation = FuzzyImplementation()
-    
-#     # Example usage
-#     right = 15
-#     back = 52
-#     right_membership_values = fuzzyImplementation.right_forward_sensor_membership(right)
-#     back_membership_values = fuzzyImplementation.right_backward_sensor_membership(back)
-#     # print(f"Membership values at right {right}: {right_membership_values}")
-#     # print(f"Membership values at back {back}: {back_membership_values}")
-
-#     output, firing_strength_sum = fuzzyImplementation.make_inference(right_membership_values, back_membership_values)
-#     print(output)
-
-#     # Compute for Speed and Direction
-#     weighted_speed = fuzzyImplementation.defuzzify(output.get("Speed", {}), firing_strength_sum)
-#     weighted_direction = fuzzyImplementation.defuzzify(output.get("Direction", {}), firing_strength_sum)
-
-#     print({"Speed": weighted_speed, "Direction": weighted_direction})
 
 class WallFollowingBot(Node):
     def __init__(self):
@@ -226,6 +206,7 @@ class WallFollowingBot(Node):
 
     def distance_callback(self, msg):
         """Callback to process LaserScan messages and extract sensor distances."""
+        
         self.right_forward_distance = self.find_nearest(msg.ranges[310:320])
         self.right_backward_distance = self.find_nearest(msg.ranges[210:220])
 
@@ -238,6 +219,8 @@ class WallFollowingBot(Node):
         right_membership = self.fuzzy.right_forward_sensor_membership(self.right_forward_distance)
         back_membership = self.fuzzy.right_backward_sensor_membership(self.right_backward_distance)
         output, firing_strength_sum = self.fuzzy.make_inference(right_membership, back_membership)
+
+        self.get_logger().info(f"RIGHT: {self.right_forward_distance}, BACK: {self.right_backward_distance}")
 
         if firing_strength_sum == 0:
             self.get_logger().warn("No firing strength from fuzzy rules.")
