@@ -6,14 +6,14 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 class FuzzyImplementation:
     def __init__(self) -> None:
         self.rule_base = [
-        ("Near", "Near", "Slow", "Right"),
-        ("Near", "Medium", "Slow", "Right"),
+        ("Near", "Near", "Slow", "Left"),
+        ("Near", "Medium", "Slow", "Left"),
         ("Near", "Far", "Slow", "Forward"),
-        ("Medium", "Near", "Medium", "Left"),
+        ("Medium", "Near", "Medium", "Right"),
         ("Medium", "Medium", "Medium", "Forward"),
         ("Medium", "Far", "Slow", "Forward"),
-        ("Far", "Near", "Medium", "Left"),
-        ("Far", "Medium", "Medium", "Left"),
+        ("Far", "Near", "Medium", "Right"),
+        ("Far", "Medium", "Medium", "Right"),
         ("Far", "Far", "Fast", "Forward"),
     ]
     
@@ -68,10 +68,7 @@ class FuzzyImplementation:
             membership["Near"] = self.falling_edge(distance, 0.25, 0.5)
             membership["Medium"] = self.rising_edge(distance, 0.25, 0.5)
         
-        elif 0.51 <= distance <= 0.6:
-            membership["Medium"] = 1.0
-        
-        elif 0.61 <= distance <= 0.8:
+        elif 0.51 <= distance <= 0.8:
             membership["Medium"] = self.falling_edge(distance, 0.61, 0.8)
             membership["Far"] = self.rising_edge(distance, 0.61, 0.8)
         
@@ -86,8 +83,7 @@ class FuzzyImplementation:
         Perform fuzzy inference using a rule base and sensor memberships.
         
         Parameters:
-            rule_base (list of tuples): A list of rules in the format
-                                        (Forward Condition, Backward Condition, Speed, Direction).
+            rule_base (list of tuples): A list of rules in the format (Forward Condition, Backward Condition, Speed, Direction).
             forward_membership (dict): Membership values for the forward sensor (Near, Medium, Far).
             backward_membership (dict): Membership values for the backward sensor (Near, Medium, Far).
             
@@ -137,12 +133,12 @@ class FuzzyImplementation:
             float: The middle of the range for the given fuzzy set.
         """
         ranges = {
-            "Slow": (0, 0.2),
-            "Medium": (0.2, 0.4),
-            "Fast": (0.4, 0.6),
-            "Left": (-3.0, -1.0),
+            "Slow": (0, 0.4),
+            "Medium": (0.4, 0.8),
+            "Fast": (0.8, 1.2),
+            "Left": (-2.0, -1.0),
             "Forward": (-1.0, 1.0),
-            "Right": (1.0, 3.0),
+            "Right": (1.0, 2.0),
         }
         
         if key in ranges:
@@ -184,13 +180,16 @@ class WallFollowingBot(Node):
         if f_list:
             return min(f_list)
         else:
-            return float('inf')
+            return None
 
     def distance_callback(self, msg):
         """Callback to process LaserScan messages and extract sensor distances."""
         
         self.right_forward_distance = self.find_nearest(msg.ranges[310:320])
         self.right_backward_distance = self.find_nearest(msg.ranges[210:220])
+
+        if self.right_forward_distance is None or self.right_backward_distance is None:
+            return #Skips processing if no valid data
 
     def update_control(self):
         if self.right_forward_distance is None or self.right_backward_distance is None:
@@ -202,18 +201,18 @@ class WallFollowingBot(Node):
         back_membership = self.fuzzy.sensor_membership(self.right_backward_distance)
         output, firing_strength_sum = self.fuzzy.make_inference(right_membership, back_membership)
 
-        # self.get_logger().info(f"RIGHT: {self.right_forward_distance}, BACK: {self.right_backward_distance}")
+        self.get_logger().debug(f"RIGHT: {right_membership}, BACK: {back_membership}")
 
         if firing_strength_sum == 0:
             self.get_logger().warn("No firing strength from fuzzy rules.")
-            return
+            return 0.0
 
         # Defuzzify to get crisp values
         speed = self.fuzzy.defuzzify(output.get("Speed", {}), firing_strength_sum)
         direction = self.fuzzy.defuzzify(output.get("Direction", {}), firing_strength_sum)
 
         # Log the computed values
-        self.get_logger().info(f"Speed: {speed}, Direction: {direction}")
+        self.get_logger().debug(f"Speed: {speed}, Direction: {direction}")
 
         # Generate and publish Twist message
         twist = Twist()
