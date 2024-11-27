@@ -41,7 +41,7 @@ class FuzzyImplementation:
             return (C - x) / (C - b)
         return 0.0
 
-    def right_forward_sensor_membership(self, distance):
+    def sensor_membership(self, distance):
         """
         Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
         for a right forward sensor using rising and falling edges.
@@ -54,47 +54,21 @@ class FuzzyImplementation:
         """
         membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
         
-        if 0 <= distance <= 9:
+        if 0 <= distance <= 0.24:
             membership["Near"] = 1.0
         
-        if 10 <= distance <= 20:
-            membership["Near"] = self.falling_edge(distance, 10, 20)
-            membership["Medium"] = self.rising_edge(distance, 10, 20)
-
-        if 21 <= distance <= 31:
-            membership["Medium"] = self.falling_edge(distance, 21, 31)
-            membership["Far"] = self.rising_edge(distance, 21, 31)
+        if 0.25 <= distance <= 0.5:
+            membership["Near"] = self.falling_edge(distance, 0.25, 0.5)
+            membership["Medium"] = self.rising_edge(distance, 0.25, 0.5)
             
-        if distance >= 32:
-            membership["Far"] = 1.0
-        
-        return self.remove_zero_memberships(membership)
+        if 0.51 <= distance <= 0.6:
+            membership["Medium"] = 1.0
 
-    def right_backward_sensor_membership(self, distance):
-        """
-        Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
-        for a right forward sensor using rising and falling edges.
-        
-        Parameters:
-            distance (float): The input distance measured by the sensor.
+        if 0.61 <= distance <= 0.8:
+            membership["Medium"] = self.falling_edge(distance, 0.61, 0.8)
+            membership["Far"] = self.rising_edge(distance, 0.61, 0.8)
             
-        Returns:
-            dict: A dictionary with the membership values for 'Near', 'Medium', and 'Far'.
-        """
-        membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
-        
-        if 0 <= distance <= 38.9:
-            membership["Near"] = 1.0
-
-        if 39.9 <= distance <= 49.9:
-            membership["Near"] = self.falling_edge(distance, 39.9, 49.9)
-            membership["Medium"] = self.rising_edge(distance, 39.9, 49.9)
-
-        if 50 <= distance <= 60:
-            membership["Medium"] = self.falling_edge(distance, 50, 60)
-            membership["Far"] = self.rising_edge(distance, 50, 60)
-            
-        if distance >= 60.1:
+        if distance >= 0.81:
             membership["Far"] = 1.0
         
         return self.remove_zero_memberships(membership)
@@ -155,12 +129,12 @@ class FuzzyImplementation:
             float: The middle of the range for the given fuzzy set.
         """
         ranges = {
-            "Slow": (10, 30),
-            "Medium": (30, 50),
-            "Fast": (50, 70),
-            "Left": (10, 30),
-            "Forward": (30, 50),
-            "Right": (50, 70),
+            "Slow": (0, 0.2),
+            "Medium": (0.2, 0.4),
+            "Fast": (0.4, 0.6),
+            "Left": (-3.0, -1.0),
+            "Forward": (-1.0, 1.0),
+            "Right": (1.0, 3.0),
         }
         
         if key in ranges:
@@ -216,11 +190,11 @@ class WallFollowingBot(Node):
             return
 
         # Fuzzy logic inference
-        right_membership = self.fuzzy.right_forward_sensor_membership(self.right_forward_distance)
-        back_membership = self.fuzzy.right_backward_sensor_membership(self.right_backward_distance)
+        right_membership = self.fuzzy.sensor_membership(self.right_forward_distance)
+        back_membership = self.fuzzy.sensor_membership(self.right_backward_distance)
         output, firing_strength_sum = self.fuzzy.make_inference(right_membership, back_membership)
 
-        self.get_logger().info(f"RIGHT: {self.right_forward_distance}, BACK: {self.right_backward_distance}")
+        # self.get_logger().info(f"RIGHT: {self.right_forward_distance}, BACK: {self.right_backward_distance}")
 
         if firing_strength_sum == 0:
             self.get_logger().warn("No firing strength from fuzzy rules.")
@@ -235,8 +209,8 @@ class WallFollowingBot(Node):
 
         # Generate and publish Twist message
         twist = Twist()
-        twist.linear.x = speed / 100.0  # Scale speed to appropriate range
-        twist.angular.z = (direction - 50) / 50.0  # Scale direction (-1 to 1 for ROS)
+        twist.linear.x = speed
+        twist.angular.z = direction
         self.pub_.publish(twist)
 
 
