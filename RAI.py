@@ -147,12 +147,12 @@ class FuzzyImplementation:
             float: The middle of the range for the given fuzzy set.
         """
         ranges = {
-            "Slow": (0, 0.4),
-            "Medium": (0.4, 0.8),
-            "Fast": (0.8, 1.2),
-            "Left": (-2.0, -1.0),
-            "Forward": (-1.0, 1.0),
-            "Right": (1.0, 2.0),
+            "Slow": (0.0, 0.3),
+            "Medium": (0.3, 0.6),
+            "Fast": (0.6, 1.0),
+            "Left": (-2.0, -0.5),
+            "Forward": (-0.5, 0.5),
+            "Right": (0.5, 2.0),
         }
         
         if key in ranges:
