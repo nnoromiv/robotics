@@ -6,16 +6,30 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 class FuzzyImplementation:
     def __init__(self) -> None:
         self.rule_base = [
-        ("Near", "Near", "Slow", "Left"),
-        ("Near", "Medium", "Slow", "Left"),
-        ("Near", "Far", "Slow", "Forward"),
-        ("Medium", "Near", "Medium", "Right"),
-        ("Medium", "Medium", "Medium", "Forward"),
-        ("Medium", "Far", "Slow", "Forward"),
-        ("Far", "Near", "Medium", "Right"),
-        ("Far", "Medium", "Medium", "Right"),
-        ("Far", "Far", "Fast", "Forward"),
-    ]
+            # If both sensors are "Near," prioritize turning away from the wall.
+            ("Near", "Near", "Slow", "Right"),  # Both sides near: turn right.
+            
+            # If the front-right is "Near" but back-right is "Medium" or "Far," move forward slowly to avoid the wall.
+            ("Near", "Medium", "Slow", "Forward"),
+            ("Near", "Far", "Slow", "Forward"),
+            
+            # If the front-right is "Medium," turn left slightly.
+            ("Medium", "Near", "Medium", "Left"),  # Right-forward is medium: avoid the wall.
+            
+            # When both sensors are "Medium," prioritize moving forward at medium speed.
+            ("Medium", "Medium", "Medium", "Forward"),
+            
+            # If back-right is "Far" but the front is "Medium," slow down and avoid the wall.
+            ("Medium", "Far", "Slow", "Forward"),
+            
+            # If front-right is "Far," adjust to stay near the wall by turning left.
+            ("Far", "Near", "Medium", "Left"),  # Far front-right, near back-right: turn left.
+            ("Far", "Medium", "Medium", "Left"),  # Far front-right, medium back-right: adjust left.
+            
+            # When both sensors are "Far," move forward at high speed (no obstacles nearby).
+            ("Far", "Far", "Fast", "Forward"),
+        ]
+
     
     def remove_zero_memberships(self, membership):
         """
