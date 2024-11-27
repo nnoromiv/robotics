@@ -73,7 +73,7 @@ class WallFollowingBot(Node):
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         
         # Timer to update control logic periodically
-        self.timer_ = self.create_timer(self.dt, self.update_control)
+        self.timer_ = self.create_timer(self.dt, self.movement)
 
     def find_nearest(self, l):
         """Return the nearest non-zero distance from a list"""
@@ -91,7 +91,7 @@ class WallFollowingBot(Node):
         right_side_range = self.find_nearest(msg.ranges[265:320])
         self.current_distance = right_side_range
 
-    def update_control(self):
+    def movement(self):
         if self.current_distance is None or self.current_distance == float('inf'):
             self.get_logger().warn('Invalid right-side distance')
             return  # Skip if no valid distance data
