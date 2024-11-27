@@ -31,15 +31,19 @@ class FuzzyImplementation:
 
     def rising_edge(self, x, a, b):
         """Calculate membership using a rising edge formula."""
-        if a <= x <= b:
-            return (x - a) / (b - a)
-        return 0.0
+        if x < a:
+            return 0.0
+        elif x > b:
+            return 1.0
+        return (x - a) / (b - a)
 
     def falling_edge(self, x, b, C):
         """Calculate membership using a falling edge formula."""
-        if b <= x <= C:
-            return (C - x) / (C - b)
-        return 0.0
+        if x < b:
+            return 1.0
+        elif x > C:
+            return 0.0
+        return (C - x) / (C - b)
 
     def sensor_membership(self, distance):
         """
@@ -52,26 +56,30 @@ class FuzzyImplementation:
         Returns:
             dict: A dictionary with the membership values for 'Near', 'Medium', and 'Far'.
         """
+        if distance < 0:
+            raise ValueError("Distance must be non-negative.")
+        
         membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
         
         if 0 <= distance <= 0.24:
             membership["Near"] = 1.0
         
-        if 0.25 <= distance <= 0.5:
+        elif 0.25 <= distance <= 0.5:
             membership["Near"] = self.falling_edge(distance, 0.25, 0.5)
             membership["Medium"] = self.rising_edge(distance, 0.25, 0.5)
-            
-        if 0.51 <= distance <= 0.6:
+        
+        elif 0.51 <= distance <= 0.6:
             membership["Medium"] = 1.0
-
-        if 0.61 <= distance <= 0.8:
+        
+        elif 0.61 <= distance <= 0.8:
             membership["Medium"] = self.falling_edge(distance, 0.61, 0.8)
             membership["Far"] = self.rising_edge(distance, 0.61, 0.8)
-            
-        if distance >= 0.81:
+        
+        elif distance >= 0.81:
             membership["Far"] = 1.0
         
         return self.remove_zero_memberships(membership)
+
 
     def make_inference(self, forward_membership, backward_membership):
         """
