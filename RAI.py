@@ -59,36 +59,31 @@ class FuzzyImplementation:
             return 0.0
         return (C - x) / (C - b)
 
-    def sensor_membership(self, distance):
+    def sensor_membership(self, distance, desired_distance=0.5):
         """
         Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
-        for a right forward sensor using rising and falling edges.
-        
-        Parameters:
-            distance (float): The input distance measured by the sensor.
-            
-        Returns:
-            dict: A dictionary with the membership values for 'Near', 'Medium', and 'Far'.
+        considering the desired distance.
         """
         if distance < 0:
             raise ValueError("Distance must be non-negative.")
         
         membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
         
-        if 0 <= distance <= 0.24:
+        # Dynamically adjust ranges based on desired distance
+        near_threshold = desired_distance * 0.8
+        medium_threshold = desired_distance * 1.2
+
+        if 0 <= distance <= near_threshold:
             membership["Near"] = 1.0
-        
-        elif 0.25 <= distance <= 0.5:
-            membership["Near"] = self.falling_edge(distance, 0.25, 0.5)
-            membership["Medium"] = self.rising_edge(distance, 0.25, 0.5)
-        
-        elif 0.51 <= distance <= 0.8:
-            membership["Medium"] = self.falling_edge(distance, 0.61, 0.8)
-            membership["Far"] = self.rising_edge(distance, 0.61, 0.8)
-        
-        elif distance >= 0.81:
+        elif near_threshold < distance <= desired_distance:
+            membership["Near"] = self.falling_edge(distance, near_threshold, desired_distance)
+            membership["Medium"] = self.rising_edge(distance, near_threshold, desired_distance)
+        elif desired_distance < distance <= medium_threshold:
+            membership["Medium"] = self.falling_edge(distance, desired_distance, medium_threshold)
+            membership["Far"] = self.rising_edge(distance, desired_distance, medium_threshold)
+        elif distance > medium_threshold:
             membership["Far"] = 1.0
-        
+
         return self.remove_zero_memberships(membership)
 
 
@@ -178,6 +173,7 @@ class WallFollowingBot(Node):
         super().__init__('wall_following_bot')
 
         self.fuzzy = FuzzyImplementation()  # Instantiate fuzzy logic class
+        self.desired_distance = 0.5  # Target distance from the wall
 
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.sub_ = self.create_subscription(LaserScan, '/scan', self.distance_callback, qos)
@@ -211,8 +207,8 @@ class WallFollowingBot(Node):
             return
 
         # Fuzzy logic inference
-        right_membership = self.fuzzy.sensor_membership(self.right_forward_distance)
-        back_membership = self.fuzzy.sensor_membership(self.right_backward_distance)
+        right_membership = self.fuzzy.sensor_membership(self.right_forward_distance, self.desired_distance)
+        back_membership = self.fuzzy.sensor_membership(self.right_backward_distance, self.desired_distance)
         output, firing_strength_sum = self.fuzzy.make_inference(right_membership, back_membership)
 
         self.get_logger().debug(f"RIGHT: {right_membership}, BACK: {back_membership}")
