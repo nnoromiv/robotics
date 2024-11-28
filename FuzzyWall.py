@@ -182,7 +182,7 @@ class WallFollowingBot(Node):
         self.right_backward_distance = None
 
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.timer_ = self.create_timer(0.1, self.update_control)
+        self.timer_ = self.create_timer(0.1, self.movement)
 
     def find_nearest(self, l):
         """Return the nearest non-zero distance from a list"""
@@ -201,7 +201,7 @@ class WallFollowingBot(Node):
         if self.right_forward_distance is None or self.right_backward_distance is None:
             return #Skips processing if no valid data
 
-    def update_control(self):
+    def movement(self):
         if self.right_forward_distance is None or self.right_backward_distance is None:
             self.get_logger().warn("Sensor data not available yet.")
             return
