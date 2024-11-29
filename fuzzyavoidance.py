@@ -83,9 +83,9 @@ def fuzzy_controller(RBS_value, RFS_value):
         direction_firing_strengths.append((firing_strength, direction_funcs[direction_label]))
 
     # Defuzzify for speed
-    speed_values = [centroid_defuzzification([fs for fs, _ in speed_firing_strengths], speed_universe, func)
+    speed_values = [centroid_fuzzification([fs for fs, _ in speed_firing_strengths], speed_universe, func)
                     for _, func in speed_firing_strengths]
-    direction_values = [centroid_defuzzification([fs for fs, _ in direction_firing_strengths], direction_universe, func)
+    direction_values = [centroid_fuzzification([fs for fs, _ in direction_firing_strengths], direction_universe, func)
                         for _, func in direction_firing_strengths]
 
     # Ensure speed is within a reasonable range

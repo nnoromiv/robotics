@@ -11,7 +11,6 @@ class PIDController():
         self.Kd = Kd
         self.previous_error = 0.0
         self.integral = 0.0
-        self.dt = 0.05
 
     def update(self, error, dt):
         P = self.Kp * error
@@ -47,8 +46,8 @@ class WallFollowingBot(Node):
         # # Handles accumulated error over time Pu/2
         # Ki = 1.4 * Kp / Pu
         
-        Kp = 0.3
-        Kd = 0.0
+        Kp = 0.4
+        Kd = 0.1
         Ki = 0.0
         
         self.dt = 0.5
@@ -109,13 +108,13 @@ class WallFollowingBot(Node):
         self.get_logger().info(f"Current Distance: {self.current_distance}, Error: {error}")
 
         # Calculate PID correction for steering
-        correction = self.pid.update(error=error, dt=0.7)
+        correction = self.pid.update(error=error, dt=self.desired_distance)
         self.get_logger().info(f"Correction: {correction}")
 
-        if self.current_distance < self.desired_distance:
+        if self.current_distance < self.desired_distance or self.front_distance < self.desired_distance:
             self.get_logger().info("Steering away...")
             twist = Twist()
-            twist.linear.x = 0.05
+            twist.linear.x = 0.06
             twist.angular.z = correction
             self.pub_.publish(twist)
             return

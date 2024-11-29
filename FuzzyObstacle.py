@@ -8,23 +8,43 @@ class FuzzyObstacleAvoidance:
     
     def __init__(self) -> None:
         self.rule_base = [
-            # Rules for avoiding obstacles
-            ("Near", "Near", "Near", "Slow", "Right"),    # All near: turn right, slow down
-            ("Near", "Near", "Medium", "Slow", "Right"),  # Front and front-right near, left medium: turn right, slow
-            ("Near", "Medium", "Near", "Slow", "Right"),  # Front and left near: sharp right turn
-            ("Near", "Far", "Near", "Slow", "Right"),     # Front near, left near, front-right far: slow and sharp right
-            ("Near", "Far", "Medium", "Slow", "Left"),    # Front near, left medium, front-right far: avoid right
-            
-            ("Medium", "Near", "Near", "Medium", "Left"), # Front-right and left near, front medium: turn left
-            ("Medium", "Medium", "Medium", "Medium", "Forward"), # Medium distances all around: move forward cautiously
-            ("Medium", "Medium", "Far", "Medium", "Forward"),    # Medium front, far left, front-right: proceed cautiously
-            ("Medium", "Far", "Medium", "Medium", "Right"),      # Medium front, medium left, far front-right: turn slightly right
-            
-            ("Far", "Near", "Near", "Medium", "Right"),          # Far front, near front-right, left near: avoid left
-            ("Far", "Medium", "Near", "Medium", "Right"),        # Far front, medium front-right, near left: slight right turn
-            ("Far", "Medium", "Medium", "Fast", "Forward"),      # Far front, medium everywhere else: proceed quickly forward
-            ("Far", "Far", "Far", "Fast", "Forward"),            # All far: move forward quickly
+            # Rules for avoiding obstacles (proximity levels: Near, Medium, Far)
+            # Proximity: "Near", "Medium", "Far", Speed: "Slow", Action: "Left"/"Right"/"Forward"
+
+            # Near Proximity (All cases where something is Near)
+            ("Near", "Near", "Near", "Slow", "Left"),  
+            ("Near", "Near", "Medium", "Slow", "Left"),
+            ("Near", "Near", "Far", "Slow", "Left"),
+            ("Near", "Medium", "Near", "Slow", "Left"),  
+            ("Near", "Medium", "Medium", "Slow", "Right"),
+            ("Near", "Medium", "Far", "Slow", "Right"),
+            ("Near", "Far", "Near", "Slow", "Left"),  
+            ("Near", "Far", "Medium", "Slow", "Right"),
+            ("Near", "Far", "Far", "Slow", "Right"),
+
+            # Medium Proximity (All cases where something is Medium)
+            ("Medium", "Near", "Near", "Slow", "Left"),
+            ("Medium", "Near", "Medium", "Slow", "Left"),
+            ("Medium", "Near", "Far", "Slow", "Right"),  
+            ("Medium", "Medium", "Near", "Slow", "Left"),
+            ("Medium", "Medium", "Medium", "Slow", "Left"),
+            ("Medium", "Medium", "Far", "Slow", "Right"),
+            ("Medium", "Far", "Near", "Slow", "Left"),
+            ("Medium", "Far", "Medium", "Slow", "Left"),
+            ("Medium", "Far", "Far", "Slow", "Right"),
+
+            # Far Proximity (All cases where something is Far)
+            ("Far", "Near", "Near", "Slow", "Left"),
+            ("Far", "Near", "Medium", "Slow", "Left"),
+            ("Far", "Near", "Far", "Slow", "Left"),
+            ("Far", "Medium", "Near", "Slow", "Left"),
+            ("Far", "Medium", "Medium", "Slow", "Left"),
+            ("Far", "Medium", "Far", "Slow", "Left"),
+            ("Far", "Far", "Near", "Fast", "Left"),
+            ("Far", "Far", "Medium", "Fast", "Left"),
+            ("Far", "Far", "Far", "Fast", "Forward"),  # When far enough, continue forward
         ]
+
 
     def remove_zero_memberships(self, membership):
         return {key: value for key, value in membership.items() if value != 0}
@@ -36,36 +56,42 @@ class FuzzyObstacleAvoidance:
             return 1.0
         return (x - a) / (b - a)
 
-    def falling_edge(self, x, b, c):
+    def falling_edge(self, x, b, C):
         if x < b:
             return 1.0
-        elif x > c:
+        elif x > C:
             return 0.0
-        return (c - x) / (c - b)
+        return (C - x) / (C - b)
 
-    def sensor_membership(self, distance):
+    def sensor_membership(self, distance, desired_distance=0.25):
         """
-        Compute membership values for 'Near', 'Medium', and 'Far' fuzzy sets for a sensor.
+        Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
+        considering the desired distance.
         """
         if distance < 0:
             raise ValueError("Distance must be non-negative.")
-
+        
         membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
+        
+        # Dynamically adjust ranges based on desired distance
+        near_threshold = desired_distance + 0.5
+        medium_threshold = desired_distance + 0.8
 
-        if 0 <= distance <= 0.5:
+        if 0 <= distance <= near_threshold:
             membership["Near"] = 1.0
-        elif 0.5 < distance <= 1.0:
-            membership["Near"] = self.falling_edge(distance, 0.5, 1.0)
-            membership["Medium"] = self.rising_edge(distance, 0.5, 1.0)
-        elif 1.0 < distance <= 1.5:
-            membership["Medium"] = self.falling_edge(distance, 1.0, 1.5)
-            membership["Far"] = self.rising_edge(distance, 1.0, 1.5)
-        elif distance > 1.5:
+        elif near_threshold < distance <= desired_distance:
+            membership["Near"] = self.falling_edge(distance, near_threshold, desired_distance)
+            membership["Medium"] = self.rising_edge(distance, near_threshold, desired_distance)
+        elif desired_distance < distance <= medium_threshold:
+            membership["Medium"] = self.falling_edge(distance, desired_distance, medium_threshold)
+            membership["Far"] = self.rising_edge(distance, desired_distance, medium_threshold)
+        elif distance > medium_threshold:
             membership["Far"] = 1.0
 
         return self.remove_zero_memberships(membership)
 
-    def make_inference(self, front_membership, front_right_membership, left_membership):
+
+    def make_inference(self, front_membership, right_membership, left_membership):
         """
         Perform fuzzy inference using a rule base and sensor memberships.
         """
@@ -73,13 +99,13 @@ class FuzzyObstacleAvoidance:
         firing_strength_sum = 0
 
         for rule in self.rule_base:
-            front_condition, front_right_condition, left_condition, speed_output, direction_output = rule
+            right_condition, front_condition, left_condition, speed_output, direction_output = rule
 
             front_value = front_membership.get(front_condition, 0.0)
-            front_right_value = front_right_membership.get(front_right_condition, 0.0)
+            right_value = right_membership.get(right_condition, 0.0)
             left_value = left_membership.get(left_condition, 0.0)
 
-            firing_strength = min(front_value, front_right_value, left_value)
+            firing_strength = min(front_value, right_value, left_value)
             firing_strength_sum += firing_strength
 
             if firing_strength > 0:
@@ -132,31 +158,37 @@ class ObstacleAvoidanceBot(Node):
         self.sub_ = self.create_subscription(LaserScan, '/scan', self.distance_callback, qos)
 
         self.front_distance = None
-        self.front_right_distance = None
+        self.right_distance = None
         self.left_distance = None
+
+        self.desired_distance = 0.5  # Target distance from the wall
 
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         self.timer_ = self.create_timer(0.1, self.movement)
 
     def find_nearest(self, l):
+        """Return the nearest non-zero distance from a list"""
         f_list = list(filter(lambda item: item > 0.0, l))
-        return min(f_list) if f_list else None
-
+        if f_list:
+            return min(f_list)
+        else:
+            return 0.0
+    
     def distance_callback(self, msg):
-        self.front_distance = self.find_nearest(msg.ranges[0:5] + msg.ranges[355:360])
-        self.front_right_distance = self.find_nearest(msg.ranges[310:320])
+        self.front_distance = self.find_nearest(msg.ranges[355:360])
+        self.right_distance = self.find_nearest(msg.ranges[265:275])
         self.left_distance = self.find_nearest(msg.ranges[85:95])
 
     def movement(self):
-        if self.front_distance is None or self.front_right_distance is None or self.left_distance is None:
+        if self.front_distance is None or self.right_distance is None or self.left_distance is None:
             self.get_logger().warn("Sensor data not available yet.")
             return
 
         # Fuzzy logic inference
-        front_membership = self.fuzzy.sensor_membership(self.front_distance)
-        front_right_membership = self.fuzzy.sensor_membership(self.front_right_distance)
-        left_membership = self.fuzzy.sensor_membership(self.left_distance)
-        output, firing_strength_sum = self.fuzzy.make_inference(front_membership, front_right_membership, left_membership)
+        front_membership = self.fuzzy.sensor_membership(self.front_distance, self.desired_distance)
+        right_membership = self.fuzzy.sensor_membership(self.right_distance, self.desired_distance)
+        left_membership = self.fuzzy.sensor_membership(self.left_distance, self.desired_distance)
+        output, firing_strength_sum = self.fuzzy.make_inference(front_membership, right_membership, left_membership)
 
         if firing_strength_sum == 0:
             self.get_logger().warn("No firing strength from fuzzy rules.")
@@ -166,10 +198,36 @@ class ObstacleAvoidanceBot(Node):
         speed = self.fuzzy.defuzzify(output.get("Speed", {}), firing_strength_sum)
         direction = self.fuzzy.defuzzify(output.get("Direction", {}), firing_strength_sum)
 
-        # Publish Twist message
+        self.get_logger().info(f"Right Distance: {self.right_distance}, Front Distance: {self.front_distance}, Left Distance: {self.left_distance}")
+        self.get_logger().info(f"Right: {right_membership}, Front: {front_membership}, Left: {left_membership}")
+        self.get_logger().info(f"Speed: {speed}, Direction: {direction}")
+
+
+        if self.front_distance < self.desired_distance:
+            self.get_logger().info("Obstacle detected in front...")
+            twist = Twist()
+            twist.linear.x = speed
+            twist.angular.z = direction
+            self.pub_.publish(twist)
+            return
+        elif self.right_distance < self.desired_distance:
+            self.get_logger().info("Obstacle detected Right...")
+            twist = Twist()
+            twist.linear.x = speed
+            twist.angular.z = direction
+            self.pub_.publish(twist)
+            return
+        elif self.left_distance < self.desired_distance:
+            self.get_logger().info("Obstacle detected left...")
+            twist = Twist()
+            twist.linear.x = speed
+            twist.angular.z = direction
+            self.pub_.publish(twist)
+            return
+
         twist = Twist()
-        twist.linear.x = speed
-        twist.angular.z = direction
+        twist.linear.x = 0.1
+        twist.angular.z = 0.0
         self.pub_.publish(twist)
 
 
