@@ -12,36 +12,36 @@ class FuzzyObstacleAvoidance:
             # Proximity: "Near", "Medium", "Far", Speed: "Slow", Action: "Left"/"Right"/"Forward"
 
             # Near Proximity (All cases where something is Near)
-            ("Near", "Near", "Near", "Slow", "Left"),  
-            ("Near", "Near", "Medium", "Slow", "Left"),
-            ("Near", "Near", "Far", "Slow", "Left"),
+            ("Near", "Near", "Near", "Slow", "Right"),  
+            ("Near", "Near", "Medium", "Slow", "Right"),
+            ("Near", "Near", "Far", "Slow", "Right"),
             ("Near", "Medium", "Near", "Slow", "Left"),  
             ("Near", "Medium", "Medium", "Slow", "Right"),
-            ("Near", "Medium", "Far", "Slow", "Right"),
-            ("Near", "Far", "Near", "Slow", "Left"),  
-            ("Near", "Far", "Medium", "Slow", "Right"),
-            ("Near", "Far", "Far", "Slow", "Right"),
+            ("Near", "Medium", "Far", "Slow", "Left"),
+            ("Near", "Far", "Near", "Fast", "Forward"),  
+            ("Near", "Far", "Medium", "Fast", "Left"),
+            ("Near", "Far", "Far", "Fast", "Forward"),
 
             # Medium Proximity (All cases where something is Medium)
-            ("Medium", "Near", "Near", "Slow", "Left"),
-            ("Medium", "Near", "Medium", "Slow", "Left"),
-            ("Medium", "Near", "Far", "Slow", "Right"),  
-            ("Medium", "Medium", "Near", "Slow", "Left"),
-            ("Medium", "Medium", "Medium", "Slow", "Left"),
-            ("Medium", "Medium", "Far", "Slow", "Right"),
-            ("Medium", "Far", "Near", "Slow", "Left"),
-            ("Medium", "Far", "Medium", "Slow", "Left"),
-            ("Medium", "Far", "Far", "Slow", "Right"),
+            ("Medium", "Near", "Near", "Slow", "Right"),
+            ("Medium", "Near", "Medium", "Slow", "Right"),
+            ("Medium", "Near", "Far", "Slow", "Left"),  
+            ("Medium", "Medium", "Near", "Slow", "Right"),
+            ("Medium", "Medium", "Medium", "Slow", "Forward"),
+            ("Medium", "Medium", "Far", "Slow", "Left"),
+            ("Medium", "Far", "Near", "Fast", "Right"),
+            ("Medium", "Far", "Medium", "Fast", "Right"),
+            ("Medium", "Far", "Far", "Fast", "Left"),
 
             # Far Proximity (All cases where something is Far)
-            ("Far", "Near", "Near", "Slow", "Left"),
-            ("Far", "Near", "Medium", "Slow", "Left"),
-            ("Far", "Near", "Far", "Slow", "Left"),
-            ("Far", "Medium", "Near", "Slow", "Left"),
-            ("Far", "Medium", "Medium", "Slow", "Left"),
-            ("Far", "Medium", "Far", "Slow", "Left"),
-            ("Far", "Far", "Near", "Fast", "Left"),
-            ("Far", "Far", "Medium", "Fast", "Left"),
+            ("Far", "Near", "Near", "Slow", "Right"),
+            ("Far", "Near", "Medium", "Slow", "Right"),
+            ("Far", "Near", "Far", "Slow", "Right"),
+            ("Far", "Medium", "Near", "Fast", "Right"),
+            ("Far", "Medium", "Medium", "Fast", "Forward"),
+            ("Far", "Medium", "Far", "Fast", "Left"),
+            ("Far", "Far", "Near", "Fast", "Right"),
+            ("Far", "Far", "Medium", "Fast", "Forward"),
             ("Far", "Far", "Far", "Fast", "Forward"),  # When far enough, continue forward
         ]
 
@@ -91,7 +91,7 @@ class FuzzyObstacleAvoidance:
         return self.remove_zero_memberships(membership)
 
 
-    def make_inference(self, front_membership, right_membership, left_membership):
+    def make_inference(self, right_membership, front_membership, left_membership):
         """
         Perform fuzzy inference using a rule base and sensor memberships.
         """
@@ -101,8 +101,8 @@ class FuzzyObstacleAvoidance:
         for rule in self.rule_base:
             right_condition, front_condition, left_condition, speed_output, direction_output = rule
 
-            front_value = front_membership.get(front_condition, 0.0)
             right_value = right_membership.get(right_condition, 0.0)
+            front_value = front_membership.get(front_condition, 0.0)
             left_value = left_membership.get(left_condition, 0.0)
 
             firing_strength = min(front_value, right_value, left_value)
@@ -127,7 +127,7 @@ class FuzzyObstacleAvoidance:
             "Medium": (0.3, 0.6),
             "Fast": (0.6, 1.0),
             "Left": (-2.0, -1.0),
-            "Forward": (-1.0, 1.0),
+            "Forward": (1.0, 1.0),
             "Right": (1.0, 2.0),
         }
 
@@ -188,7 +188,7 @@ class ObstacleAvoidanceBot(Node):
         front_membership = self.fuzzy.sensor_membership(self.front_distance, self.desired_distance)
         right_membership = self.fuzzy.sensor_membership(self.right_distance, self.desired_distance)
         left_membership = self.fuzzy.sensor_membership(self.left_distance, self.desired_distance)
-        output, firing_strength_sum = self.fuzzy.make_inference(front_membership, right_membership, left_membership)
+        output, firing_strength_sum = self.fuzzy.make_inference(right_membership, front_membership, left_membership)
 
         if firing_strength_sum == 0:
             self.get_logger().warn("No firing strength from fuzzy rules.")
@@ -203,22 +203,8 @@ class ObstacleAvoidanceBot(Node):
         self.get_logger().info(f"Speed: {speed}, Direction: {direction}")
 
 
-        if self.front_distance < self.desired_distance:
+        if self.front_distance < self.desired_distance or self.right_distance < self.desired_distance or self.left_distance < self.desired_distance:
             self.get_logger().info("Obstacle detected in front...")
-            twist = Twist()
-            twist.linear.x = speed
-            twist.angular.z = direction
-            self.pub_.publish(twist)
-            return
-        elif self.right_distance < self.desired_distance:
-            self.get_logger().info("Obstacle detected Right...")
-            twist = Twist()
-            twist.linear.x = speed
-            twist.angular.z = direction
-            self.pub_.publish(twist)
-            return
-        elif self.left_distance < self.desired_distance:
-            self.get_logger().info("Obstacle detected left...")
             twist = Twist()
             twist.linear.x = speed
             twist.angular.z = direction
