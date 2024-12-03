@@ -45,19 +45,19 @@ class WallFollowingBot(Node):
         # Kd = 0.08 * Kp * Pu
         # # Handles accumulated error over time Pu/2
         # Ki = 1.4 * Kp / Pu
-
-        # PID tuned by me
         
         Kp = 0.4
-        Kd = 0.05
+        Kd = 0.1
         Ki = 0.0
         
+        self.dt = 0.5
+
         self.pid = PIDController(
             Kp=Kp, 
             Ki=Ki, 
             Kd=Kd
         )
-        self.desired_distance = 0.25 # Target distance from wall
+        self.desired_distance = 0.5 # Target distance from wall
 
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.sub_ = self.create_subscription(LaserScan, '/scan', self.distance_callback, qos)
@@ -72,7 +72,7 @@ class WallFollowingBot(Node):
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         
         # Timer to update control logic periodically
-        self.timer_ = self.create_timer(0.1, self.movement)
+        self.timer_ = self.create_timer(self.dt, self.movement)
 
     def find_nearest(self, l):
         """Return the nearest non-zero distance from a list"""
@@ -87,7 +87,7 @@ class WallFollowingBot(Node):
         front_ranges = min(self.find_nearest(msg.ranges[0:5]), self.find_nearest(msg.ranges[355:360]))
         self.front_distance = front_ranges
         
-        right_side_range = self.find_nearest(msg.ranges[265:275])
+        right_side_range = self.find_nearest(msg.ranges[265:320])
         self.current_distance = right_side_range
 
     def movement(self):
@@ -100,19 +100,18 @@ class WallFollowingBot(Node):
         #     return  # Skip if any of the side distances are invalid
 
         # Calculate the time difference (dt)
+        current_time = self.get_clock().now()
+        self.previous_time = current_time
 
-        if self.current_distance < self.desired_distance:
-            current_time = self.get_clock().now()
-            self.previous_time = current_time
+        # Calculate error in distance from the desired distance
+        error = self.desired_distance - self.current_distance
+        self.get_logger().info(f"Current Distance: {self.current_distance}, Error: {error}")
 
-            # Calculate error in distance from the desired distance
-            error = self.desired_distance - self.current_distance
-            self.get_logger().info(f"Current Distance: {self.current_distance}, Error: {error}")
+        # Calculate PID correction for steering
+        correction = self.pid.update(error=error, dt=self.desired_distance)
+        self.get_logger().info(f"Correction: {correction}")
 
-            # Calculate PID correction for steering
-            correction = self.pid.update(error=error, dt=self.desired_distance)
-            self.get_logger().info(f"Correction: {correction}")
-
+        if self.current_distance < self.desired_distance or self.front_distance < self.desired_distance:
             self.get_logger().info("Steering away...")
             twist = Twist()
             twist.linear.x = 0.06
@@ -122,7 +121,7 @@ class WallFollowingBot(Node):
 
         twist = Twist()
         twist.linear.x = 0.1  # Constant forward speed
-        twist.angular.z = 0.0 # Turn right (you can adjust the turning speed or direction)
+        twist.angular.z = correction # Turn right (you can adjust the turning speed or direction)
 
         # Publish the velocity command to the robot
         self.pub_.publish(twist)
