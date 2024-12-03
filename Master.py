@@ -335,14 +335,34 @@ class Master(Node):
         self.front_distance = self.find_nearest(msg.ranges[355:360])
         self.right_distance = self.find_nearest(msg.ranges[265:275])
         self.left_distance = self.find_nearest(msg.ranges[85:95])
+        
+    def blended_control(self, fuzzy_wall_speed, fuzzy_wall_direction, fuzzy_avoidance_speed, fuzzy_avoidance_direction):
+        # Weighting factors
+        wall_weight = 0.6
+        avoidance_weight = 0.4
+
+        # Blend speeds and directions
+        blended_speed = (fuzzy_wall_speed * wall_weight + fuzzy_avoidance_speed * avoidance_weight)
+        blended_direction = (fuzzy_wall_direction * wall_weight + fuzzy_avoidance_direction * avoidance_weight)
+
+        return blended_speed, blended_direction
+    
+    def gradual_control(self, target_speed):
+        max_step = 0.05  # Maximum change in speed per iteration
+        if abs(self.current_speed - target_speed) > max_step:
+            self.current_speed += max_step if target_speed > self.current_speed else -max_step
+        else:
+            self.current_speed = target_speed
+        return self.current_speed
 
     def movement(self):
-        if self.front_right_distance is None or self.right_back_distance is None:
-            self.get_logger().warn("Sensor data not available yet.")
-            return
         
-        if self.front_distance is None or self.right_distance is None or self.left_distance is None:
-            self.get_logger().warn("Sensor data not available yet.")
+        if self.front_distance is None or self.right_distance is None or self.left_distance is None or self.front_right_distance is None or self.right_back_distance is None:
+            self.get_logger().warn("Incomplete sensor data, stopping robot.")
+            twist = Twist()
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+            self.pub_.publish(twist)
             return
 
         right_membership = self.fuzzy_right_wall.sensor_membership(self.front_right_distance, self.desired_distance)
@@ -369,26 +389,28 @@ class Master(Node):
         self.get_logger().info(f"Right: {right_membership}, Front: {front_membership}, Left: {left_membership}")
 
         
-        if min(self.front_distance, self.front_right_distance, self.left_distance) <= self.desired_distance:
-            self.get_logger().info("Obstacle Aviodance...")
+        if self.front_distance < self.desired_distance or self.front_right_distance < self.desired_distance:
+            self.get_logger().info("Obstacle Avoidance Priority...")
             twist = Twist()
             twist.linear.x = fuzzy_avoidance_speed
             twist.angular.z = fuzzy_avoidance_direction
-            self.pub_.publish(twist)
-            return
-        elif min(self.front_right_distance, self.right_back_distance) >= self.desired_distance:
-            self.get_logger().info("Right Edge Following...")
+        elif self.front_right_distance > self.desired_distance and self.right_back_distance > self.desired_distance:
+            self.get_logger().info("Right Wall Following Priority...")
             twist = Twist()
             twist.linear.x = fuzzy_right_wall_speed
             twist.angular.z = fuzzy_right_wall_direction
-            self.pub_.publish(twist)
-            return
         else:
+            self.get_logger().info("Blended Control...")
             twist = Twist()
-            twist.linear.x = 0.1
-            twist.angular.z = 0.0
-            self.pub_.publish(twist)
-            return
+            blended_speed, blended_direction = self.blended_control(
+                fuzzy_right_wall_speed, fuzzy_right_wall_direction,
+                fuzzy_avoidance_speed, fuzzy_avoidance_direction
+            )
+            twist.linear.x = self.gradual_control(blended_speed)
+            twist.angular.z = blended_direction
+
+        self.publish_debug_info(f"Right Distance: {self.right_distance}, Front Distance: {self.front_distance}, Left Distance: {self.left_distance}")
+        self.pub_.publish(twist)
 
 
 def main(args=None):
