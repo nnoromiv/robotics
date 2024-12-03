@@ -8,9 +8,6 @@ class FuzzyObstacleAvoidance:
     
     def __init__(self) -> None:
         self.rule_base = [
-            # Rules for avoiding obstacles (proximity levels: Near, Medium, Far)
-            # Proximity: "Near", "Medium", "Far", Speed: "Slow", Action: "Left"/"Right"/"Forward"
-
             # Near Proximity (All cases where something is Near)
             ("Near", "Near", "Near", "Slow", "Right"),  
             ("Near", "Near", "Medium", "Slow", "Right"),
@@ -42,7 +39,7 @@ class FuzzyObstacleAvoidance:
             ("Far", "Medium", "Far", "Fast", "Left"),
             ("Far", "Far", "Near", "Fast", "Right"),
             ("Far", "Far", "Medium", "Fast", "Forward"),
-            ("Far", "Far", "Far", "Fast", "Forward"),  # When far enough, continue forward
+            ("Far", "Far", "Far", "Fast", "Forward"),
         ]
 
 

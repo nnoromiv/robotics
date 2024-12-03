@@ -3,31 +3,20 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-class FuzzyImplementation:
+
+
+class FuzzyRightWall:
     def __init__(self) -> None:
         self.rule_base = [
-            # If both sensors are "Near," prioritize turning away from the wall.
-            ("Near", "Near", "Slow", "Right"),  # Both sides near: turn right.
-            
-            # If the front-right is "Near" but back-right is "Medium" or "Far," move forward slowly to avoid the wall.
-            ("Near", "Medium", "Slow", "Forward"),
-            ("Near", "Far", "Slow", "Forward"),
-            
-            # If the front-right is "Medium," turn left slightly.
-            ("Medium", "Near", "Medium", "Left"),  # Right-forward is medium: avoid the wall.
-            
-            # When both sensors are "Medium," prioritize moving forward at medium speed.
-            ("Medium", "Medium", "Medium", "Forward"),
-            
-            # If back-right is "Far" but the front is "Medium," slow down and avoid the wall.
-            ("Medium", "Far", "Slow", "Forward"),
-            
-            # If front-right is "Far," adjust to stay near the wall by turning left.
-            ("Far", "Near", "Medium", "Left"),  # Far front-right, near back-right: turn left.
-            ("Far", "Medium", "Medium", "Left"),  # Far front-right, medium back-right: adjust left.
-            
-            # When both sensors are "Far," move forward at high speed (no obstacles nearby).
-            ("Far", "Far", "Fast", "Forward"),
+            ("Near", "Near", "Medium", "Right"),            
+            ("Near", "Medium", "Slow", "Right"),
+            ("Near", "Far", "Medium", "Left"),            
+            ("Medium", "Near", "Slow", "Forward"), 
+            ("Medium", "Medium", "Medium", "Forward"),            
+            ("Medium", "Far", "Slow", "Left"),            
+            ("Far", "Near", "Slow", "Left"), 
+            ("Far", "Medium", "Medium", "Left"),             
+            ("Far", "Far", "Fast", "Left"),
         ]
 
     
@@ -62,8 +51,15 @@ class FuzzyImplementation:
     def sensor_membership(self, distance, desired_distance=0.25):
         """
         Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
-        considering the desired distance.
+        considering the desired distance. This method scales the membership values based on the desired distance
+
+        membershipRange = {
+            "Near": [0.0, 0.25. 0.75], 
+            "Medium": [0.25, 0.75. 1.05], 
+            "Far": [0.75, 1.05, >1.05]
+            }
         """
+
         if distance < 0:
             raise ValueError("Distance must be non-negative.")
         
@@ -105,11 +101,11 @@ class FuzzyImplementation:
 
         # Iterate through the rule base
         for rule in self.rule_base:
-            forward_condition, backward_condition, speed_output, direction_output = rule
+            front_right_condition, right_back_condition, speed_output, direction_output = rule
 
             # Get the membership values for the current conditions
-            forward_value = forward_membership.get(forward_condition, 0.0)
-            backward_value = backward_membership.get(backward_condition, 0.0)
+            forward_value = forward_membership.get(front_right_condition, 0.0)
+            backward_value = backward_membership.get(right_back_condition, 0.0)
 
             # The rule's firing strength is the minimum of the two memberships
             firing_strength = min(forward_value, backward_value)
@@ -145,9 +141,9 @@ class FuzzyImplementation:
             "Slow": (0.0, 0.3),
             "Medium": (0.3, 0.6),
             "Fast": (0.6, 1.0),
-            "Left": (-2.0, -0.5),
-            "Forward": (-0.5, 0.5),
-            "Right": (0.5, 2.0),
+            "Left": (-2.0, -1.0),
+            "Forward": (1.0, 1.0),
+            "Right": (1.0, 2.0),
         }
         
         if key in ranges:
@@ -172,14 +168,14 @@ class WallFollowingBot(Node):
     def __init__(self):
         super().__init__('wall_following_bot')
 
-        self.fuzzy = FuzzyImplementation()  # Instantiate fuzzy logic class
+        self.fuzzy = FuzzyRightWall()  # Instantiate fuzzy logic class
         self.desired_distance = 0.25  # Target distance from the wall
 
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.sub_ = self.create_subscription(LaserScan, '/scan', self.distance_callback, qos)
 
-        self.right_forward_distance = None
-        self.right_backward_distance = None
+        self.front_right_distance = None
+        self.right_back_distance = None
 
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         self.timer_ = self.create_timer(0.1, self.movement)
@@ -195,18 +191,18 @@ class WallFollowingBot(Node):
     def distance_callback(self, msg):
         """Callback to process LaserScan messages and extract sensor distances."""
         
-        self.right_forward_distance = self.find_nearest(msg.ranges[310:320])
-        self.right_backward_distance = self.find_nearest(msg.ranges[210:220])
+        self.front_right_distance = self.find_nearest(msg.ranges[310:320])
+        self.right_back_distance = self.find_nearest(msg.ranges[210:220])
 
 
     def movement(self):
-        if self.right_forward_distance is None or self.right_backward_distance is None:
+        if self.front_right_distance is None or self.right_back_distance is None:
             self.get_logger().warn("Sensor data not available yet.")
             return
 
         # Fuzzy logic inference
-        right_membership = self.fuzzy.sensor_membership(self.right_forward_distance, self.desired_distance)
-        back_membership = self.fuzzy.sensor_membership(self.right_backward_distance, self.desired_distance)
+        right_membership = self.fuzzy.sensor_membership(self.front_right_distance, self.desired_distance)
+        back_membership = self.fuzzy.sensor_membership(self.right_back_distance, self.desired_distance)
         output, firing_strength_sum = self.fuzzy.make_inference(right_membership, back_membership)
 
         self.get_logger().info(f"RIGHT: {right_membership}, BACK: {back_membership}")
@@ -222,20 +218,11 @@ class WallFollowingBot(Node):
         # Log the computed values
         self.get_logger().info(f"Speed: {speed}, Direction: {direction}")
 
-        if self.right_forward_distance < self.desired_distance:
-            # Generate and publish Twist message
-            twist = Twist()
-            twist.linear.x = speed
-            twist.angular.z = direction * -1
-            self.pub_.publish(twist)
-            return
-        
         twist = Twist()
-        twist.linear.x = speed  # Constant forward speed
-        twist.angular.z = 0.0
-
-        # Publish the velocity command to the robot
+        twist.linear.x = speed
+        twist.angular.z = direction
         self.pub_.publish(twist)
+        return
 
 
 def main(args=None):

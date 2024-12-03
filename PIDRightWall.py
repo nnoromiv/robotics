@@ -26,25 +26,6 @@ class WallFollowingBot(Node):
 
     def __init__(self):
         super().__init__('wall_following_bot')
-
-        # PID tuned with Ziegler-Nichols
-        
-        # Use Ku and Pu values to compute PID parameters
-        # Ku = 0.01  # Ultimate Gain
-        # Pu = 2.0  # Oscillation Period in seconds
-        
-
-        # # Increase the proportional gain (Kp) using Ku above until 
-        # # the system starts to oscillate continuously, i.e., when 
-        # # the system reaches a stable oscillation, where the output 
-        # # does not grow unbounded but instead oscillates with a 
-        # # constant amplitude.
-        # Kp = 0.6 * Ku
-        # # Dampen the rate of error change, preventing overshooting 
-        # # or oscillation in the robot's behavior. Pu/8
-        # Kd = 0.08 * Kp * Pu
-        # # Handles accumulated error over time Pu/2
-        # Ki = 1.4 * Kp / Pu
         
         Kp = 0.4
         Kd = 0.1
@@ -64,8 +45,6 @@ class WallFollowingBot(Node):
         
         self.current_distance = None
         self.front_distance = None
-        # self.left_distance = None
-        # self.right_distance = None
 
         self.previous_time = self.get_clock().now()
 
@@ -94,12 +73,7 @@ class WallFollowingBot(Node):
         if self.current_distance is None or self.current_distance == float('inf'):
             self.get_logger().warn('Invalid right-side distance')
             return  # Skip if no valid distance data
-        
-        # if self.left_distance == float('inf') or self.right_distance == float('inf'):
-        #     self.get_logger().warn('Invalid left or right-side distance')
-        #     return  # Skip if any of the side distances are invalid
 
-        # Calculate the time difference (dt)
         current_time = self.get_clock().now()
         self.previous_time = current_time
 
