@@ -5,9 +5,10 @@ from geometry_msgs.msg import Twist
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 class FuzzyObstacleAvoidance:
-    
+    # R, F, L, S, D
+
     def __init__(self) -> None:
-        self.rule_base = [
+       self.rule_base = [
             # Near Proximity (All cases where something is Near)
             ("Near", "Near", "Near", "Slow", "Right"),  
             ("Near", "Near", "Medium", "Slow", "Right"),
@@ -41,8 +42,7 @@ class FuzzyObstacleAvoidance:
             ("Far", "Far", "Medium", "Fast", "Forward"),
             ("Far", "Far", "Far", "Fast", "Forward"),
         ]
-
-
+       
     def remove_zero_memberships(self, membership):
         return {key: value for key, value in membership.items() if value != 0}
 
@@ -199,18 +199,19 @@ class ObstacleAvoidanceBot(Node):
         self.get_logger().info(f"Right: {right_membership}, Front: {front_membership}, Left: {left_membership}")
         self.get_logger().info(f"Speed: {speed}, Direction: {direction}")
 
+        d1 = min(self.front_distance, self.right_distance, self.left_distance) 
 
-        if self.front_distance < self.desired_distance or self.right_distance < self.desired_distance or self.left_distance < self.desired_distance:
+        if d1 < self.desired_distance:
             self.get_logger().info("Obstacle detected in front...")
             twist = Twist()
             twist.linear.x = speed
             twist.angular.z = direction
-            self.pub_.publish(twist)
-            return
+        else:
+            twist = Twist()
+            twist.linear.x = 0.1
+            twist.angular.z = 0.0
 
-        twist = Twist()
-        twist.linear.x = 0.1
-        twist.angular.z = 0.0
+        
         self.pub_.publish(twist)
 
 
