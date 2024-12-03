@@ -78,7 +78,7 @@ class FuzzyImplementation:
         elif near_threshold < distance <= desired_distance:
             membership["Near"] = self.falling_edge(distance, near_threshold, desired_distance)
             membership["Medium"] = self.rising_edge(distance, near_threshold, desired_distance)
-        elif desired_distance < distance <= medium_threshold:
+        elif near_threshold < distance <= medium_threshold:
             membership["Medium"] = self.falling_edge(distance, desired_distance, medium_threshold)
             membership["Far"] = self.rising_edge(distance, desired_distance, medium_threshold)
         elif distance > medium_threshold:
