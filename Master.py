@@ -52,15 +52,7 @@ class GeneralFunctions:
 
         return self.remove_zero_memberships(membership)
 
-    def get_middle_of_range(self, key):
-        ranges = {
-            "Slow": (0.0, 0.3),
-            "Medium": (0.3, 0.6),
-            "Fast": (0.6, 1.0),
-            "Left": (-2.0, -1.0),
-            "Forward": (1.0, 1.0),
-            "Right": (1.0, 2.0),
-        }
+    def get_middle_of_range(self, key, ranges):
 
         if key in ranges:
             start, end = ranges[key]
@@ -68,26 +60,50 @@ class GeneralFunctions:
         else:
             raise ValueError("Invalid key.")
 
-    def defuzzify(self, memberships, firing_strength_sum):
-        weighted_sum = 0
+    def defuzzify(self, memberships, firing_strength_sum, ranges):
+        weighted_sum = 0.0
 
         for key, value in memberships.items():
-            middle = self.get_middle_of_range(key)
+            middle = self.get_middle_of_range(key, ranges)
             for item in value:
                 weighted_sum += middle * item
 
-        return weighted_sum / firing_strength_sum
+        return weighted_sum / firing_strength_sum 
     
+    def master_membership(self, distance, desired_distance=0.5):
+        """
+        Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
+        considering the desired distance.
+        """
+        if distance < 0:
+            raise ValueError("Distance must be non-negative.")
+        
+        membership = {"Near": 0.0, "Far": 0.0}
+        
+        # Dynamically adjust ranges based on desired distance
+        near_threshold = desired_distance + 0.5
+        medium_threshold = desired_distance + 0.8
+
+        if 0 <= distance <= near_threshold:
+            membership["Near"] = 1.0
+        elif near_threshold < distance <= medium_threshold:
+            membership["Near"] = self.falling_edge(distance, desired_distance, medium_threshold)
+            membership["Far"] = self.rising_edge(distance, desired_distance, medium_threshold)
+        elif distance > medium_threshold:
+            membership["Far"] = 1.0
+
+        return self.remove_zero_memberships(membership)
+
 class FuzzyRightWall:
     def __init__(self) -> None:
         self.rule_base = [
-            ("Near", "Near", "Medium", "Right"),            
+            ("Near", "Near", "Slow", "Right"),            
             ("Near", "Medium", "Slow", "Right"),
-            ("Near", "Far", "Medium", "Left"),            
+            ("Near", "Far", "Slow", "Left"),            
             ("Medium", "Near", "Slow", "Forward"), 
             ("Medium", "Medium", "Medium", "Forward"),            
-            ("Medium", "Far", "Slow", "Left"),            
-            ("Far", "Near", "Slow", "Left"), 
+            ("Medium", "Far", "Medium", "Left"),            
+            ("Far", "Near", "Medium", "Left"), 
             ("Far", "Medium", "Medium", "Left"),             
             ("Far", "Far", "Fast", "Left"),
         ]
@@ -224,8 +240,53 @@ class Master(Node):
 
         self.desired_distance = 0.5  # Target distance from the wall
 
+        self.rule_base = [
+            ("Near", "Near", "OB"),            
+            ("Near", "Far", "RE"),
+            ("Far", "Near", "OB"),            
+            ("Far", "Far", "RE"),
+        ]
+
+        self.ranges = {
+            "Slow": (0.0, 0.3),
+            "Medium": (0.3, 0.6),
+            "Fast": (0.6, 1.0),
+            "Left": (-2.0, -1.0),
+            "Forward": (1.0, 1.0),
+            "Right": (1.0, 2.0),
+            "RE": (0, 1),
+            "OB": (0, 1)
+        }
+
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         self.timer_ = self.create_timer(0.1, self.movement)
+
+    
+    def inner_make_inference(self, OB, RE):
+        """
+        Perform fuzzy inference using a rule base and sensor memberships.
+        """
+        output_membership = {"Rule": {}}
+        firing_strength_sum = 0
+
+        for rule in self.rule_base:
+            speed_condition, direction_condition, output = rule
+
+            speed_value = OB.get(speed_condition, 0.0)
+            direction_value = RE.get(direction_condition, 0.0)
+
+            firing_strength = max(speed_value, direction_value)
+            firing_strength_sum += firing_strength
+
+            if firing_strength > 0:
+                if output not in output_membership["Rule"]:
+                    output_membership["Rule"][output] = [firing_strength]
+                else:
+                    output_membership["Rule"][output] += [firing_strength]
+
+        return output_membership, firing_strength_sum
+
+
 
     def find_nearest(self, l):
         """Return the nearest non-zero distance from a list"""
@@ -238,9 +299,10 @@ class Master(Node):
     def distance_callback(self, msg):
         self.front_right_distance = self.find_nearest(msg.ranges[310:320])
         self.right_back_distance = self.find_nearest(msg.ranges[210:220])
-        self.front_distance = self.find_nearest(msg.ranges[355:360])
-        self.right_distance = self.find_nearest(msg.ranges[265:275])
-        self.left_distance = self.find_nearest(msg.ranges[85:95])
+        
+        self.front_distance = min(self.find_nearest(msg.ranges[0:5]), self.find_nearest(msg.ranges[355:360]))
+        self.right_distance = self.find_nearest(msg.ranges[310:320])
+        self.left_distance = self.find_nearest(msg.ranges[40:50])
 
     def movement(self):
         
@@ -266,31 +328,39 @@ class Master(Node):
             return
 
         # Defuzzify
-        fuzzy_right_wall_speed = self.fuzzy.defuzzify(fuzzy_right_wall_output.get("Speed", {}), fuzzy_right_wall_firing_strength_sum)
-        fuzzy_right_wall_direction = self.fuzzy.defuzzify(fuzzy_right_wall_output.get("Direction", {}), fuzzy_right_wall_firing_strength_sum)
+        fuzzy_right_wall_speed = self.fuzzy.defuzzify(fuzzy_right_wall_output.get("Speed", {}), fuzzy_right_wall_firing_strength_sum, self.ranges)
+        fuzzy_right_wall_direction = self.fuzzy.defuzzify(fuzzy_right_wall_output.get("Direction", {}), fuzzy_right_wall_firing_strength_sum, self.ranges)
 
-        fuzzy_avoidance_speed = self.fuzzy.defuzzify(fuzzy_avoidance_output.get("Speed", {}), fuzzy_avoidance_firing_strength_sum)
-        fuzzy_avoidance_direction = self.fuzzy.defuzzify(fuzzy_avoidance_output.get("Direction", {}), fuzzy_avoidance_firing_strength_sum)
-
-        self.get_logger().info(f"Front Right: {front_right_membership}, Right Back Distance: {front_back_membership}")
-        self.get_logger().info(f"Right: {right_membership}, Front: {front_membership}, Left: {left_membership}")
+        fuzzy_avoidance_speed = self.fuzzy.defuzzify(fuzzy_avoidance_output.get("Speed", {}), fuzzy_avoidance_firing_strength_sum, self.ranges)
+        fuzzy_avoidance_direction = self.fuzzy.defuzzify(fuzzy_avoidance_output.get("Direction", {}), fuzzy_avoidance_firing_strength_sum, self.ranges)
 
         d1 = min(self.front_right_distance, self.right_back_distance)
-        d2 = min(self.front_distance, self.right_distance, self.left_distance) 
-        
-        if d2 <= self.desired_distance:
+        d2 = min(self.front_distance, self.right_distance, self.left_distance)
+
+        # self.get_logger().info(f"OT: {ouptut}, FI: {firing}")
+
+        self.get_logger().info(f"Right Distance: {self.right_distance}, Front Distance: {self.front_distance}, Left Distance: {self.left_distance}")
+        # self.get_logger().info(f"Right: {right_membership}, Front: {front_membership}, Left: {left_membership}")
+        self.get_logger().info(f"LMS: {fuzzy_avoidance_speed}, RMS: {fuzzy_avoidance_direction}")
+
+        # self.get_logger().info(f"Front Right Distance: {self.front_right_distance}, Right Back Distance: {self.right_back_distance}")
+        # self.get_logger().info(f"RIGHT: {front_right_membership}, BACK: {front_back_membership}")
+        # self.get_logger().info(f"LMS: {fuzzy_right_wall_speed}, RMS: {fuzzy_right_wall_direction}")
+
+        self.get_logger().info(f"D1: {d1}, D2: {d2}")
+
+        if d2 <= 0.25:
             self.get_logger().info("Obstacle Avoidance Priority...")
             twist = Twist()
             twist.linear.x = fuzzy_avoidance_speed
             twist.angular.z = fuzzy_avoidance_direction
-        else:
+        else :
             self.get_logger().info("Right Wall Following Priority...")
             twist = Twist()
             twist.linear.x = fuzzy_right_wall_speed
-            twist.angular.z = fuzzy_right_wall_direction
+            twist.angular.z = fuzzy_right_wall_direction  
 
-        self.get_logger().info(f"Right Distance: {self.right_distance}, Front Distance: {self.front_distance}, Left Distance: {self.left_distance}")
-        self.get_logger().info(f"Front Right Distance: {self.front_right_distance}, Right Back Distance: {self.right_back_distance}")
+
         self.pub_.publish(twist)
 
 
@@ -305,7 +375,6 @@ def main(args=None):
     finally:
         bot.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == "__main__":
     main()
