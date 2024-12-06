@@ -25,33 +25,44 @@ class GeneralFunctions:
             return 0.0
         return (C - x) / (C - b)
 
-    def sensor_membership(self, distance, desired_distance=0.5):
+    def sensor_membership(self, distance, desired_distance=0.25):
         """
         Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
-        considering the desired distance.
-        """
-        if distance < 0:
-            raise ValueError("Distance must be non-negative.")
-        
-        membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
-        
-        # Dynamically adjust ranges based on desired distance
-        near_threshold = desired_distance + 0.5
-        medium_threshold = desired_distance + 0.8
+        considering the desired distance. This method scales the membership values based on the desired distance
 
+        membershipRange = {
+            "Near":  [-0.4 0.2 0.45], 
+            "Medium":  [0.2 0.45 0.7], 
+            "Far":  [0.45 0.7 2]
+            }
+        """
+        membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
+
+        near_range = [-0.4, 0.2, 0.45]
+        medium_range = [0.2, 0.45, 0.7]
+        far_range = [0.45, 0.7, 2]
+
+        if distance < 0:
+            membership["Near"] = 1.0  
+        
+        # Calculate the updated thresholds based on the new membership ranges
+        near_threshold = near_range[2]  # The upper value for "Near"
+        medium_threshold = medium_range[2]  # The upper value for "Medium"
+
+        # Membership assignment based on updated ranges
         if 0 <= distance <= near_threshold:
             membership["Near"] = 1.0
-        elif near_threshold < distance <= desired_distance:
-            membership["Near"] = self.falling_edge(distance, near_threshold, desired_distance)
-            membership["Medium"] = self.rising_edge(distance, near_threshold, desired_distance)
-        elif desired_distance < distance <= medium_threshold:
-            membership["Medium"] = self.falling_edge(distance, desired_distance, medium_threshold)
-            membership["Far"] = self.rising_edge(distance, desired_distance, medium_threshold)
-        elif distance > medium_threshold:
+        elif near_threshold < distance <= near_range[1]:  # In this range, use the falling edge for "Near"
+            membership["Near"] = self.falling_edge(distance, near_range[1], near_threshold)
+            membership["Medium"] = self.rising_edge(distance, near_range[1], near_threshold)
+        elif near_range[1] < distance <= medium_range[1]:  # In this range, use the falling edge for "Medium"
+            membership["Medium"] = self.falling_edge(distance, near_range[1], medium_range[1])
+            membership["Far"] = self.rising_edge(distance, near_range[1], medium_range[1])
+        elif distance > medium_threshold:  # If distance is greater than the upper range for "Medium"
             membership["Far"] = 1.0
 
         return self.remove_zero_memberships(membership)
-
+    
     def get_middle_of_range(self, key, ranges):
 
         if key in ranges:
@@ -68,44 +79,44 @@ class GeneralFunctions:
             for item in value:
                 weighted_sum += middle * item
 
-        return weighted_sum / firing_strength_sum 
+        return weighted_sum / firing_strength_sum if firing_strength_sum > 0 else 1.0
     
-    def master_membership(self, distance, desired_distance=0.5):
-        """
-        Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
-        considering the desired distance.
-        """
-        if distance < 0:
-            raise ValueError("Distance must be non-negative.")
+    # def master_membership(self, distance, desired_distance=0.5):
+    #     """
+    #     Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
+    #     considering the desired distance.
+    #     """
+    #     if distance < 0:
+    #         raise ValueError("Distance must be non-negative.")
         
-        membership = {"Near": 0.0, "Far": 0.0}
+    #     membership = {"Near": 0.0, "Far": 0.0}
         
-        # Dynamically adjust ranges based on desired distance
-        near_threshold = desired_distance + 0.5
-        medium_threshold = desired_distance + 0.8
+    #     # Dynamically adjust ranges based on desired distance
+    #     near_threshold = desired_distance + 0.5
+    #     medium_threshold = desired_distance + 0.8
 
-        if 0 <= distance <= near_threshold:
-            membership["Near"] = 1.0
-        elif near_threshold < distance <= medium_threshold:
-            membership["Near"] = self.falling_edge(distance, desired_distance, medium_threshold)
-            membership["Far"] = self.rising_edge(distance, desired_distance, medium_threshold)
-        elif distance > medium_threshold:
-            membership["Far"] = 1.0
+    #     if 0 <= distance <= near_threshold:
+    #         membership["Near"] = 1.0
+    #     elif near_threshold < distance <= medium_threshold:
+    #         membership["Near"] = self.falling_edge(distance, desired_distance, medium_threshold)
+    #         membership["Far"] = self.rising_edge(distance, desired_distance, medium_threshold)
+    #     elif distance > medium_threshold:
+    #         membership["Far"] = 1.0
 
-        return self.remove_zero_memberships(membership)
+    #     return self.remove_zero_memberships(membership)
 
 class FuzzyRightWall:
     def __init__(self) -> None:
         self.rule_base = [
-            ("Near", "Near", "Slow", "Right"),            
-            ("Near", "Medium", "Slow", "Right"),
+            ("Near", "Near", "Slow", "Left"),            
+            ("Near", "Medium", "Slow", "Left"),
             ("Near", "Far", "Slow", "Left"),            
-            ("Medium", "Near", "Slow", "Forward"), 
+            ("Medium", "Near", "Medium", "Forward"), 
             ("Medium", "Medium", "Medium", "Forward"),            
-            ("Medium", "Far", "Medium", "Left"),            
-            ("Far", "Near", "Medium", "Left"), 
-            ("Far", "Medium", "Medium", "Left"),             
-            ("Far", "Far", "Fast", "Left"),
+            ("Medium", "Far", "Medium", "Forward"),            
+            ("Far", "Near", "Fast", "Right"), 
+            ("Far", "Medium", "Fast", "Right"),             
+            ("Far", "Far", "Fast", "Right"),
         ]
 
     def make_inference(self, forward_membership, backward_membership):
@@ -155,41 +166,41 @@ class FuzzyObstacleAvoidance:
     
     def __init__(self) -> None:
         # R, F, L, S, D
-        self.rule_base = [
+       self.rule_base = [
             # Near Proximity (All cases where something is Near)
-            ("Near", "Near", "Near", "Slow", "Right"),  
-            ("Near", "Near", "Medium", "Slow", "Right"),
-            ("Near", "Near", "Far", "Slow", "Right"),
-            ("Near", "Medium", "Near", "Slow", "Right"),  
-            ("Near", "Medium", "Medium", "Slow", "Right"),
+            ("Near", "Near", "Near", "Slow", "Left"),  
+            ("Near", "Near", "Medium", "Slow", "Left"),
+            ("Near", "Near", "Far", "Slow", "Left"),
+            ("Near", "Medium", "Near", "Slow", "Left"),  
+            ("Near", "Medium", "Medium", "Slow", "Left"),
             ("Near", "Medium", "Far", "Slow", "Left"),
-            ("Near", "Far", "Near", "Fast", "Forward"),  
-            ("Near", "Far", "Medium", "Fast", "Forward"),
-            ("Near", "Far", "Far", "Fast", "Forward"),
+            ("Near", "Far", "Near", "Slow", "Left"),  
+            ("Near", "Far", "Medium", "Slow", "Left"),
+            ("Near", "Far", "Far", "Slow", "Left"),
 
             # Medium Proximity (All cases where something is Medium)
-            ("Medium", "Near", "Near", "Slow", "Right"),
-            ("Medium", "Near", "Medium", "Slow", "Right"),
-            ("Medium", "Near", "Far", "Slow", "Left"),  
-            ("Medium", "Medium", "Near", "Slow", "Right"),
-            ("Medium", "Medium", "Medium", "Slow", "Forward"),
-            ("Medium", "Medium", "Far", "Slow", "Left"),
-            ("Medium", "Far", "Near", "Fast", "Right"),
-            ("Medium", "Far", "Medium", "Fast", "Right"),
-            ("Medium", "Far", "Far", "Fast", "Left"),
+            ("Medium", "Near", "Near", "Medium", "Forward"),
+            ("Medium", "Near", "Medium", "Medium", "Forward"),
+            ("Medium", "Near", "Far", "Medium", "Forward"),  
+            ("Medium", "Medium", "Near", "Medium", "Forward"),
+            ("Medium", "Medium", "Medium", "Medium", "Forward"),
+            ("Medium", "Medium", "Far", "Medium", "Forward"),
+            ("Medium", "Far", "Near", "Medium", "Forward"),
+            ("Medium", "Far", "Medium", "Medium", "Forward"),
+            ("Medium", "Far", "Far", "Medium", "Forward"),
 
             # Far Proximity (All cases where something is Far)
-            ("Far", "Near", "Near", "Slow", "Right"),
-            ("Far", "Near", "Medium", "Slow", "Right"),
-            ("Far", "Near", "Far", "Slow", "Right"),
+            ("Far", "Near", "Near", "Fast", "Right"),
+            ("Far", "Near", "Medium", "Fast", "Right"),
+            ("Far", "Near", "Far", "Fast", "Right"),
             ("Far", "Medium", "Near", "Fast", "Right"),
-            ("Far", "Medium", "Medium", "Fast", "Forward"),
+            ("Far", "Medium", "Medium", "Fast", "Right"),
             ("Far", "Medium", "Far", "Fast", "Right"),
             ("Far", "Far", "Near", "Fast", "Right"),
             ("Far", "Far", "Medium", "Fast", "Right"),
-            ("Far", "Far", "Far", "Fast", "Forward"),
+            ("Far", "Far", "Far", "Fast", "Right"),
         ]
-
+     
     def make_inference(self, right_membership, front_membership, left_membership):
         """
         Perform fuzzy inference using a rule base and sensor memberships.
@@ -240,69 +251,64 @@ class Master(Node):
 
         self.desired_distance = 0.5  # Target distance from the wall
 
-        self.rule_base = [
-            ("Near", "Near", "OB"),            
-            ("Near", "Far", "RE"),
-            ("Far", "Near", "OB"),            
-            ("Far", "Far", "RE"),
-        ]
+        # self.rule_base = [
+        #     ("Near", "Near", "OB"),            
+        #     ("Near", "Far", "RE"),
+        #     ("Far", "Near", "OB"),            
+        #     ("Far", "Far", "RE"),
+        # ]
 
         self.ranges = {
-            "Slow": (0.0, 0.3),
-            "Medium": (0.3, 0.6),
-            "Fast": (0.6, 1.0),
-            "Left": (-2.0, -1.0),
-            "Forward": (1.0, 1.0),
-            "Right": (1.0, 2.0),
-            "RE": (0, 1),
-            "OB": (0, 1)
+            "Slow": (0.0, 0.04),
+            "Medium": (0.04, 0.06),
+            "Fast": (0.06, 0.1),
+            "Right": (-1.0, -0.1),
+            "Forward": (-0.1, 0.1),
+            "Left": (0.1, 1),
         }
 
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         self.timer_ = self.create_timer(0.1, self.movement)
 
     
-    def inner_make_inference(self, OB, RE):
-        """
-        Perform fuzzy inference using a rule base and sensor memberships.
-        """
-        output_membership = {"Rule": {}}
-        firing_strength_sum = 0
+    # def inner_make_inference(self, OB, RE):
+    #     """
+    #     Perform fuzzy inference using a rule base and sensor memberships.
+    #     """
+    #     output_membership = {"Rule": {}}
+    #     firing_strength_sum = 0
 
-        for rule in self.rule_base:
-            speed_condition, direction_condition, output = rule
+    #     for rule in self.rule_base:
+    #         speed_condition, direction_condition, output = rule
 
-            speed_value = OB.get(speed_condition, 0.0)
-            direction_value = RE.get(direction_condition, 0.0)
+    #         speed_value = OB.get(speed_condition, 0.0)
+    #         direction_value = RE.get(direction_condition, 0.0)
 
-            firing_strength = max(speed_value, direction_value)
-            firing_strength_sum += firing_strength
+    #         firing_strength = max(speed_value, direction_value)
+    #         firing_strength_sum += firing_strength
 
-            if firing_strength > 0:
-                if output not in output_membership["Rule"]:
-                    output_membership["Rule"][output] = [firing_strength]
-                else:
-                    output_membership["Rule"][output] += [firing_strength]
+    #         if firing_strength > 0:
+    #             if output not in output_membership["Rule"]:
+    #                 output_membership["Rule"][output] = [firing_strength]
+    #             else:
+    #                 output_membership["Rule"][output] += [firing_strength]
 
-        return output_membership, firing_strength_sum
+    #     return output_membership, firing_strength_sum
 
 
 
-    def find_nearest(self, l):
-        """Return the nearest non-zero distance from a list"""
-        f_list = list(filter(lambda item: item > 0.0, l))
-        if f_list:
-            return min(f_list)
-        else:
-            return 0.0
+    def find_nearest(self, lst):
+        # Exclude zero distances and find minimum
+        filtered_list = filter(lambda item: item > 0.0, lst)
+        return min(min(filtered_list, default=1), 1)
     
     def distance_callback(self, msg):
-        self.front_right_distance = self.find_nearest(msg.ranges[310:320])
-        self.right_back_distance = self.find_nearest(msg.ranges[210:220])
+        self.front_right_distance = self.find_nearest(msg.ranges[300:340])
+        self.right_back_distance = self.find_nearest(msg.ranges[210:230])
         
-        self.front_distance = min(self.find_nearest(msg.ranges[0:5]), self.find_nearest(msg.ranges[355:360]))
-        self.right_distance = self.find_nearest(msg.ranges[310:320])
-        self.left_distance = self.find_nearest(msg.ranges[40:50])
+        self.front_distance = self.find_nearest(msg.ranges[355:360])
+        self.right_distance = self.find_nearest(msg.ranges[265:285])
+        self.left_distance = self.find_nearest(msg.ranges[85:105])
 
     def movement(self):
         
@@ -323,7 +329,7 @@ class Master(Node):
         left_membership = self.fuzzy.sensor_membership(self.left_distance, self.desired_distance)
         fuzzy_avoidance_output, fuzzy_avoidance_firing_strength_sum = self.fuzzy_avoidance.make_inference(right_membership, front_membership, left_membership)
 
-        if fuzzy_right_wall_firing_strength_sum == 0 or fuzzy_avoidance_firing_strength_sum == 0:
+        if fuzzy_right_wall_firing_strength_sum < 0 and fuzzy_avoidance_firing_strength_sum < 0:
             self.get_logger().warn("No firing strength from fuzzy rules.")
             return
 
@@ -340,12 +346,12 @@ class Master(Node):
         # self.get_logger().info(f"OT: {ouptut}, FI: {firing}")
 
         self.get_logger().info(f"Right Distance: {self.right_distance}, Front Distance: {self.front_distance}, Left Distance: {self.left_distance}")
-        # self.get_logger().info(f"Right: {right_membership}, Front: {front_membership}, Left: {left_membership}")
-        self.get_logger().info(f"LMS: {fuzzy_avoidance_speed}, RMS: {fuzzy_avoidance_direction}")
+        self.get_logger().info(f"Right: {right_membership}, Front: {front_membership}, Left: {left_membership}")
+        self.get_logger().info(f"ALMS: {fuzzy_avoidance_speed}, ARMS: {fuzzy_avoidance_direction}")
 
         # self.get_logger().info(f"Front Right Distance: {self.front_right_distance}, Right Back Distance: {self.right_back_distance}")
         # self.get_logger().info(f"RIGHT: {front_right_membership}, BACK: {front_back_membership}")
-        # self.get_logger().info(f"LMS: {fuzzy_right_wall_speed}, RMS: {fuzzy_right_wall_direction}")
+        self.get_logger().info(f"RLMS: {fuzzy_right_wall_speed}, RRMS: {fuzzy_right_wall_direction}")
 
         self.get_logger().info(f"D1: {d1}, D2: {d2}")
 

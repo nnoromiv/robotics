@@ -8,15 +8,15 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 class FuzzyRightWall:
     def __init__(self) -> None:
         self.rule_base = [
-            ("Near", "Near", "Medium", "Right"),            
-            ("Near", "Medium", "Slow", "Right"),
-            ("Near", "Far", "Medium", "Left"),            
-            ("Medium", "Near", "Slow", "Forward"), 
+            ("Near", "Near", "Slow", "Left"),            
+            ("Near", "Medium", "Slow", "Left"),
+            ("Near", "Far", "Slow", "Left"),            
+            ("Medium", "Near", "Medium", "Forward"), 
             ("Medium", "Medium", "Medium", "Forward"),            
-            ("Medium", "Far", "Slow", "Left"),            
-            ("Far", "Near", "Slow", "Left"), 
-            ("Far", "Medium", "Medium", "Left"),             
-            ("Far", "Far", "Fast", "Left"),
+            ("Medium", "Far", "Medium", "Forward"),            
+            ("Far", "Near", "Fast", "Right"), 
+            ("Far", "Medium", "Fast", "Right"),             
+            ("Far", "Far", "Fast", "Right"),
         ]
 
     
@@ -54,30 +54,34 @@ class FuzzyRightWall:
         considering the desired distance. This method scales the membership values based on the desired distance
 
         membershipRange = {
-            "Near": [0.0, 0.25. 0.75], 
-            "Medium": [0.25, 0.75. 1.05], 
-            "Far": [0.75, 1.05, >1.05]
+            "Near":  [-0.4 0.2 0.45], 
+            "Medium":  [0.2 0.45 0.7], 
+            "Far":  [0.45 0.7 2]
             }
         """
+        membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
+
+        near_range = [-0.4, 0.2, 0.45]
+        medium_range = [0.2, 0.45, 0.7]
+        far_range = [0.45, 0.7, 2]
 
         if distance < 0:
-            raise ValueError("Distance must be non-negative.")
+            membership["Near"] = 1.0  
         
-        membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
-        
-        # Dynamically adjust ranges based on desired distance
-        near_threshold = desired_distance + 0.5
-        medium_threshold = desired_distance + 0.8
+        # Calculate the updated thresholds based on the new membership ranges
+        near_threshold = near_range[2]  # The upper value for "Near"
+        medium_threshold = medium_range[2]  # The upper value for "Medium"
 
+        # Membership assignment based on updated ranges
         if 0 <= distance <= near_threshold:
             membership["Near"] = 1.0
-        elif near_threshold < distance <= desired_distance:
-            membership["Near"] = self.falling_edge(distance, near_threshold, desired_distance)
-            membership["Medium"] = self.rising_edge(distance, near_threshold, desired_distance)
-        elif near_threshold < distance <= medium_threshold:
-            membership["Medium"] = self.falling_edge(distance, desired_distance, medium_threshold)
-            membership["Far"] = self.rising_edge(distance, desired_distance, medium_threshold)
-        elif distance > medium_threshold:
+        elif near_threshold < distance <= near_range[1]:  # In this range, use the falling edge for "Near"
+            membership["Near"] = self.falling_edge(distance, near_range[1], near_threshold)
+            membership["Medium"] = self.rising_edge(distance, near_range[1], near_threshold)
+        elif near_range[1] < distance <= medium_range[1]:  # In this range, use the falling edge for "Medium"
+            membership["Medium"] = self.falling_edge(distance, near_range[1], medium_range[1])
+            membership["Far"] = self.rising_edge(distance, near_range[1], medium_range[1])
+        elif distance > medium_threshold:  # If distance is greater than the upper range for "Medium"
             membership["Far"] = 1.0
 
         return self.remove_zero_memberships(membership)
@@ -138,12 +142,12 @@ class FuzzyRightWall:
             float: The middle of the range for the given fuzzy set.
         """
         ranges = {
-            "Slow": (0.0, 0.3),
-            "Medium": (0.3, 0.6),
-            "Fast": (0.6, 1.0),
-            "Left": (-2.0, -1.0),
-            "Forward": (1.0, 1.0),
-            "Right": (1.0, 2.0),
+            "Slow": (0.0, 0.04),
+            "Medium": (0.04, 0.06),
+            "Fast": (0.06, 0.1),
+            "Right": (-1.0, -0.1),
+            "Forward": (-0.1, 0.1),
+            "Left": (0.1, 1),
         }
         
         if key in ranges:
@@ -179,20 +183,17 @@ class WallFollowingBot(Node):
 
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         self.timer_ = self.create_timer(0.1, self.movement)
-
-    def find_nearest(self, l):
-        """Return the nearest non-zero distance from a list"""
-        f_list = list(filter(lambda item: item > 0.0, l))
-        if f_list:
-            return min(f_list)
-        else:
-            return 0.0
+        
+    def find_nearest(self, lst):
+        # Exclude zero distances and find minimum
+        filtered_list = filter(lambda item: item > 0.0, lst)
+        return min(min(filtered_list, default=1), 1)
 
     def distance_callback(self, msg):
         """Callback to process LaserScan messages and extract sensor distances."""
         
-        self.front_right_distance = self.find_nearest(msg.ranges[310:320])
-        self.right_back_distance = self.find_nearest(msg.ranges[210:220])
+        self.front_right_distance = self.find_nearest(msg.ranges[300:320])
+        self.right_back_distance = self.find_nearest(msg.ranges[210:230])
 
 
     def movement(self):

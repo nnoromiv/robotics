@@ -63,30 +63,40 @@ class FuzzyObstacleAvoidance:
     def sensor_membership(self, distance, desired_distance=0.25):
         """
         Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
-        considering the desired distance.
-        """
-        if distance < 0:
-            raise ValueError("Distance must be non-negative.")
-        
-        membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
-        
-        # Dynamically adjust ranges based on desired distance
-        near_threshold = desired_distance + 0.5
-        medium_threshold = desired_distance + 0.8
+        considering the desired distance. This method scales the membership values based on the desired distance
 
+        membershipRange = {
+            "Near":  [-0.4 0.2 0.45], 
+            "Medium":  [0.2 0.45 0.7], 
+            "Far":  [0.45 0.7 2]
+            }
+        """
+        membership = {"Near": 0.0, "Medium": 0.0, "Far": 0.0}
+
+        near_range = [-0.4, 0.2, 0.45]
+        medium_range = [0.2, 0.45, 0.7]
+        far_range = [0.45, 0.7, 2]
+
+        if distance < 0:
+            membership["Near"] = 1.0  
+        
+        # Calculate the updated thresholds based on the new membership ranges
+        near_threshold = near_range[2]  # The upper value for "Near"
+        medium_threshold = medium_range[2]  # The upper value for "Medium"
+
+        # Membership assignment based on updated ranges
         if 0 <= distance <= near_threshold:
             membership["Near"] = 1.0
-        elif near_threshold < distance <= desired_distance:
-            membership["Near"] = self.falling_edge(distance, near_threshold, desired_distance)
-            membership["Medium"] = self.rising_edge(distance, near_threshold, desired_distance)
-        elif desired_distance < distance <= medium_threshold:
-            membership["Medium"] = self.falling_edge(distance, desired_distance, medium_threshold)
-            membership["Far"] = self.rising_edge(distance, desired_distance, medium_threshold)
-        elif distance > medium_threshold:
+        elif near_threshold < distance <= near_range[1]:  # In this range, use the falling edge for "Near"
+            membership["Near"] = self.falling_edge(distance, near_range[1], near_threshold)
+            membership["Medium"] = self.rising_edge(distance, near_range[1], near_threshold)
+        elif near_range[1] < distance <= medium_range[1]:  # In this range, use the falling edge for "Medium"
+            membership["Medium"] = self.falling_edge(distance, near_range[1], medium_range[1])
+            membership["Far"] = self.rising_edge(distance, near_range[1], medium_range[1])
+        elif distance > medium_threshold:  # If distance is greater than the upper range for "Medium"
             membership["Far"] = 1.0
 
         return self.remove_zero_memberships(membership)
-
 
     def make_inference(self, right_membership, front_membership, left_membership):
         """
@@ -120,12 +130,12 @@ class FuzzyObstacleAvoidance:
 
     def get_middle_of_range(self, key):
         ranges = {
-            "Slow": (0.0, 0.3),
-            "Medium": (0.3, 0.6),
-            "Fast": (0.6, 1.0),
-            "Left": (-2.0, -1.0),
-            "Forward": (1.0, 1.0),
-            "Right": (1.0, 2.0),
+            "Slow": (0.0, 0.04),
+            "Medium": (0.04, 0.06),
+            "Fast": (0.06, 0.1),
+            "Right": (-1.0, -0.1),
+            "Forward": (-0.1, 0.1),
+            "Left": (0.1, 1),
         }
 
         if key in ranges:
@@ -163,18 +173,15 @@ class ObstacleAvoidanceBot(Node):
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         self.timer_ = self.create_timer(0.1, self.movement)
 
-    def find_nearest(self, l):
-        """Return the nearest non-zero distance from a list"""
-        f_list = list(filter(lambda item: item > 0.0, l))
-        if f_list:
-            return min(f_list)
-        else:
-            return 0.0
+    def find_nearest(self, lst):
+        # Exclude zero distances and find minimum
+        filtered_list = filter(lambda item: item > 0.0, lst)
+        return min(min(filtered_list, default=1), 1)
     
     def distance_callback(self, msg):
         self.front_distance = self.find_nearest(msg.ranges[355:360])
-        self.right_distance = self.find_nearest(msg.ranges[265:275])
-        self.left_distance = self.find_nearest(msg.ranges[85:95])
+        self.right_distance = self.find_nearest(msg.ranges[265:285])
+        self.left_distance = self.find_nearest(msg.ranges[85:105])
 
     def movement(self):
         if self.front_distance is None or self.right_distance is None or self.left_distance is None:

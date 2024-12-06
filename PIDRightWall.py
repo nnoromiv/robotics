@@ -57,7 +57,7 @@ class WallFollowingBot(Node):
         """Return the nearest non-zero distance from a list"""
         f_list = list(filter(lambda item: item > 0.0, l))
         if f_list:
-            return min(f_list)
+            return min(min(f_list, default=1), 1)
         else:
             return float('inf')
 
