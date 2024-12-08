@@ -18,15 +18,11 @@ class FuzzyRightWall:
             ("Far", "Medium", "Fast", "Right"),             
             ("Far", "Far", "Fast", "Right"),
         ]
-
     
     def remove_zero_memberships(self, membership):
         """
         Remove dictionary entries with zero values.
-        
-        Parameters:
-            membership (dict): The membership dictionary.
-            
+        Parameters: membership (dict): The membership dictionary.
         Returns:
             dict: A dictionary without zero-value entries.
         """
@@ -48,7 +44,7 @@ class FuzzyRightWall:
             return 0.0
         return (C - x) / (C - b)
 
-    def sensor_membership(self, distance, desired_distance=0.25):
+    def sensor_membership(self, distance):
         """
         Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
         considering the desired distance. This method scales the membership values based on the desired distance
@@ -85,7 +81,6 @@ class FuzzyRightWall:
             membership["Far"] = 1.0
 
         return self.remove_zero_memberships(membership)
-
 
     def make_inference(self, forward_membership, backward_membership):
         """
@@ -134,12 +129,8 @@ class FuzzyRightWall:
     def get_middle_of_range(self, key):
         """
         Return the middle point of the range corresponding to the given key.
-        
-        Parameters:
-            key (str): The fuzzy set key ('Slow', 'Medium', 'Fast').
-            
-        Returns:
-            float: The middle of the range for the given fuzzy set.
+        Parameters: key (str): The fuzzy set key ('Slow', 'Medium', 'Fast', ...).
+        Returns: float: The middle of the range for the given fuzzy set.
         """
         ranges = {
             "Slow": (0.0, 0.04),
@@ -158,15 +149,28 @@ class FuzzyRightWall:
             raise ValueError("Invalid key.")
 
     def defuzzify(self, memberships, firing_strength_sum):
-            """Compute the weighted sum for a set of fuzzy memberships."""
-            weighted_sum = 0
-            
-            for key, value in memberships.items():
-                middle = self.get_middle_of_range(key)  # Get the middle value of the range
-                for item in value:
-                    weighted_sum += middle * item
+        """
+        The `defuzzify` function calculates the weighted sum of the middle values of fuzzy sets based on
+        their memberships and returns the result divided by the sum of firing strengths.
+        
+        :param memberships: The `memberships` parameter seems to be a dictionary where the keys represent
+        fuzzy sets or linguistic terms, and the values are lists of membership values for each linguistic
+        term
+        :param firing_strength_sum: The `firing_strength_sum` parameter represents the total sum of firing
+        strengths of the fuzzy rules that have fired. This value is used in defuzzification to calculate the
+        final crisp output value by dividing the weighted sum by the `firing_strength_sum`
+        :return: the defuzzified output value, which is calculated by summing up the weighted values of the
+        middle of each range multiplied by their corresponding membership values, and then dividing this sum
+        by the total firing strength sum.
+        """
+        weighted_sum = 0
+        
+        for key, value in memberships.items():
+            middle = self.get_middle_of_range(key)  # Get the middle value of the range
+            for item in value:
+                weighted_sum += middle * item
 
-            return weighted_sum / firing_strength_sum
+        return weighted_sum / firing_strength_sum
 
 class WallFollowingBot(Node):
     def __init__(self):
@@ -184,26 +188,41 @@ class WallFollowingBot(Node):
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         self.timer_ = self.create_timer(0.1, self.movement)
         
-    def find_nearest(self, lst):
-        # Exclude zero distances and find minimum
-        filtered_list = filter(lambda item: item > 0.0, lst)
+    def find_nearest(self, l):
+        """
+        The `find_nearest` function returns the nearest non-zero distance from a given list.
+        
+        :param l: The `find_nearest` method takes a list `l` as input. It filters out all elements in the
+        list that are greater than 0.0 and then returns the nearest non-zero distance from the filtered list
+        :return: The `find_nearest` method returns the nearest non-zero distance from a given list `l`. If
+        there are non-zero distances in the list, it returns the minimum non-zero distance. If the list is
+        empty or only contains zeros, it returns positive infinity (`float('inf')`).
+        """
+        """Return the nearest non-zero distance from a list"""
+        filtered_list = filter(lambda item: item > 0.0, l)
         return min(min(filtered_list, default=1), 1)
 
     def distance_callback(self, msg):
         """Callback to process LaserScan messages and extract sensor distances."""
-        
         self.front_right_distance = self.find_nearest(msg.ranges[300:320])
         self.right_back_distance = self.find_nearest(msg.ranges[210:230])
 
-
     def movement(self):
+        """
+        The `movement` function uses fuzzy logic inference to determine speed and direction values for
+        movement based on sensor data.
+        :return: The `movement` method returns nothing explicitly, as it ends with a `return` statement
+        without a value. However, if certain conditions are met (such as sensor data not being available or
+        no firing strength from fuzzy rules), the method will return early without executing the final
+        publishing step.
+        """
         if self.front_right_distance is None or self.right_back_distance is None:
             self.get_logger().warn("Sensor data not available yet.")
             return
 
         # Fuzzy logic inference
-        right_membership = self.fuzzy.sensor_membership(self.front_right_distance, self.desired_distance)
-        back_membership = self.fuzzy.sensor_membership(self.right_back_distance, self.desired_distance)
+        right_membership = self.fuzzy.sensor_membership(self.front_right_distance)
+        back_membership = self.fuzzy.sensor_membership(self.right_back_distance)
         output, firing_strength_sum = self.fuzzy.make_inference(right_membership, back_membership)
 
         self.get_logger().info(f"RIGHT: {right_membership}, BACK: {back_membership}")
@@ -227,6 +246,14 @@ class WallFollowingBot(Node):
 
 
 def main(args=None):
+    """
+    The main function initializes a ROS node, creates a WallFollowingBot controller, spins the
+    controller, handles keyboard interrupts, and shuts down the node.
+    
+    :param args: In the `main` function you provided, the `args` parameter is used to pass command-line
+    arguments to the `rclpy.init()` function. These arguments can be used to configure the ROS 2 runtime
+    environment. When `rclpy.init(args=args)` is called, it initializes the
+    """
     rclpy.init(args=args)
     controller = WallFollowingBot()
 

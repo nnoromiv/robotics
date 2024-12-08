@@ -6,7 +6,6 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 class FuzzyObstacleAvoidance:
     # R, F, L, S, D
-
     def __init__(self) -> None:
        self.rule_base = [
             # Near Proximity (All cases where something is Near)
@@ -44,9 +43,16 @@ class FuzzyObstacleAvoidance:
         ]
        
     def remove_zero_memberships(self, membership):
+        """
+        Remove dictionary entries with zero values.
+        Parameters: membership (dict): The membership dictionary.
+        Returns:
+            dict: A dictionary without zero-value entries.
+        """
         return {key: value for key, value in membership.items() if value != 0}
 
     def rising_edge(self, x, a, b):
+        """Calculate membership using a rising edge formula."""
         if x < a:
             return 0.0
         elif x > b:
@@ -54,13 +60,14 @@ class FuzzyObstacleAvoidance:
         return (x - a) / (b - a)
 
     def falling_edge(self, x, b, C):
+        """Calculate membership using a falling edge formula."""
         if x < b:
             return 1.0
         elif x > C:
             return 0.0
         return (C - x) / (C - b)
 
-    def sensor_membership(self, distance, desired_distance=0.25):
+    def sensor_membership(self, distance):
         """
         Compute the membership values for 'Near', 'Medium', and 'Far' fuzzy sets
         considering the desired distance. This method scales the membership values based on the desired distance
@@ -129,6 +136,11 @@ class FuzzyObstacleAvoidance:
         return output_membership, firing_strength_sum
 
     def get_middle_of_range(self, key):
+        """
+        Return the middle point of the range corresponding to the given key.
+        Parameters: key (str): The fuzzy set key ('Slow', 'Medium', 'Fast', ...).
+        Returns: float: The middle of the range for the given fuzzy set.
+        """
         ranges = {
             "Slow": (0.0, 0.04),
             "Medium": (0.04, 0.06),
@@ -145,6 +157,20 @@ class FuzzyObstacleAvoidance:
             raise ValueError("Invalid key.")
 
     def defuzzify(self, memberships, firing_strength_sum):
+        """
+        The `defuzzify` function calculates the weighted sum of the middle values of fuzzy sets based on
+        their memberships and returns the result divided by the sum of firing strengths.
+        
+        :param memberships: The `memberships` parameter seems to be a dictionary where the keys represent
+        fuzzy sets or linguistic terms, and the values are lists of membership values for each linguistic
+        term
+        :param firing_strength_sum: The `firing_strength_sum` parameter represents the total sum of firing
+        strengths of the fuzzy rules that have fired. This value is used in defuzzification to calculate the
+        final crisp output value by dividing the weighted sum by the `firing_strength_sum`
+        :return: the defuzzified output value, which is calculated by summing up the weighted values of the
+        middle of each range multiplied by their corresponding membership values, and then dividing this sum
+        by the total firing strength sum.
+        """
         weighted_sum = 0
 
         for key, value in memberships.items():
@@ -173,25 +199,50 @@ class ObstacleAvoidanceBot(Node):
         self.pub_ = self.create_publisher(Twist, '/cmd_vel', 10)
         self.timer_ = self.create_timer(0.1, self.movement)
 
-    def find_nearest(self, lst):
-        # Exclude zero distances and find minimum
-        filtered_list = filter(lambda item: item > 0.0, lst)
+    def find_nearest(self, l):
+        """
+        The `find_nearest` function returns the nearest non-zero distance from a given list.
+        
+        :param l: The `find_nearest` method takes a list `l` as input. It filters out all elements in the
+        list that are greater than 0.0 and then returns the nearest non-zero distance from the filtered list
+        :return: The `find_nearest` method returns the nearest non-zero distance from a given list `l`. If
+        there are non-zero distances in the list, it returns the minimum non-zero distance. If the list is
+        empty or only contains zeros, it returns positive infinity (`float('inf')`).
+        """
+        """Return the nearest non-zero distance from a list"""
+        filtered_list = filter(lambda item: item > 0.0, l)
         return min(min(filtered_list, default=1), 1)
     
     def distance_callback(self, msg):
+        """
+        The `distance_callback` function calculates the nearest distances from specific ranges in a message.
+        
+        :param msg: The `msg` parameter in the `distance_callback` function seems to be a message object
+        that contains information about distances from sensors. It appears to have a `ranges` attribute
+        which is likely an array or list of distance values from different angles
+        """
         self.front_distance = self.find_nearest(msg.ranges[355:360])
         self.right_distance = self.find_nearest(msg.ranges[265:285])
         self.left_distance = self.find_nearest(msg.ranges[85:105])
 
     def movement(self):
+        """
+        This Python function uses fuzzy logic inference to determine movement speed and direction based on
+        sensor data and obstacle detection.
+        :return: If any of the sensor data (front_distance, right_distance, left_distance) is None, a
+        warning message "Sensor data not available yet." is logged and the function returns without
+        performing any further calculations. If there is no firing strength from the fuzzy rules
+        (firing_strength_sum is 0), a warning message "No firing strength from fuzzy rules." is logged and
+        the function returns. Otherwise,
+        """
         if self.front_distance is None or self.right_distance is None or self.left_distance is None:
             self.get_logger().warn("Sensor data not available yet.")
             return
 
         # Fuzzy logic inference
-        front_membership = self.fuzzy.sensor_membership(self.front_distance, self.desired_distance)
-        right_membership = self.fuzzy.sensor_membership(self.right_distance, self.desired_distance)
-        left_membership = self.fuzzy.sensor_membership(self.left_distance, self.desired_distance)
+        front_membership = self.fuzzy.sensor_membership(self.front_distance)
+        right_membership = self.fuzzy.sensor_membership(self.right_distance)
+        left_membership = self.fuzzy.sensor_membership(self.left_distance)
         output, firing_strength_sum = self.fuzzy.make_inference(right_membership, front_membership, left_membership)
 
         if firing_strength_sum == 0:
@@ -223,6 +274,14 @@ class ObstacleAvoidanceBot(Node):
 
 
 def main(args=None):
+    """
+    The main function initializes a ROS node, creates an ObstacleAvoidanceBot instance, spins the node,
+    and handles shutdown procedures.
+    
+    :param args: In the `main` function you provided, the `args` parameter is used to pass command-line
+    arguments to the `rclpy.init()` function. These arguments can be used to configure the ROS 2 node
+    when it is initialized. By passing `args=args` to `rclpy.init
+    """
     rclpy.init(args=args)
     bot = ObstacleAvoidanceBot()
 
@@ -233,7 +292,6 @@ def main(args=None):
     finally:
         bot.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == "__main__":
     main()
